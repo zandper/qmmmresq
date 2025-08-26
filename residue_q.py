@@ -65,7 +65,6 @@ for mol in mae_st.molecule:
             exit()
 #DO THIS PART ASYNCHRONOUSLY
 
-
             #t = structure._AtomCollection(mae_st, atom_list)
             """
             print(t[0])
