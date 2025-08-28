@@ -6,11 +6,24 @@ import re
 import shutil
 import subprocess
 import multiprocessing
+import argparse
 #print("USER:", os.environ.get("USER"))
 #exit()
 #path ="charg"
 
-def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, e_dir):
+def extract_first_wavelength(file_path):
+    with open(file_path, 'r') as file:
+        content = file.read()
+    # Search for wavelength in nm
+    match = re.search(r'Excitation energy =.*?([\d.]+)\s*nm', content)
+    
+    if match:
+        wavelength_nm = float(match.group(1))
+        return wavelength_nm
+    else:
+        return "WAVELENGTH NOT FOUND"
+
+def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir):
     copy_st = mae_st.copy() # Make copy of original structure 
     atom_list = res._atoms # Get index of all atoms in residue
     for i in atom_list: # Set partial charge of all atoms in residue to 0 
@@ -27,26 +40,39 @@ def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, e_dir
     with structure.StructureWriter(mae_copy_path) as writer: #write modified .mae file
         writer.append(copy_st)
     cmd_dir = os.path.realpath(res_dir)
-    p = subprocess.Popen(['qsite', '-WAIT',os.path.basename(in_copy_path)], cwd=cmd_dir)
+    p = subprocess.Popen(['qsite', '-WAIT', os.path.basename(in_copy_path)], cwd=cmd_dir) #run qsite calculation
     p.wait()
-    result = output.QSiteOutput(mae_copy_path.replace(".mae",".out"))
-    with open(os.path.join(e_dir,f"{res_num_str}.txt"),"w") as f:
-        f.write(f"{res_num_str}\t{result.energy}")
-    shutil.rmtree(res_dir) 
+    out_path = mae_copy_path.replace(".mae",".out")
+    result = output.QSiteOutput(out_path)
+    wavelength_nm = extract_first_wavelength(out_path)
+    print(f"Total_E: {result.energy}")
+    print(f"Wavelength: {wavelength_nm}")
 
 
-def process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, e_dir):
+    with open(os.path.join(p_dir,f"{res_num_str}.txt"),"w") as f:
+        f.write(f"{res_num_str}\t{result.energy}\t{wavelength_nm}")
+    #shutil.rmtree(res_dir) 
+
+
+def process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, p_dir):
     # Use multiprocessing Pool to parallelize the work
     with multiprocessing.Pool(processes=num_processes) as pool:
         # Pass all arguments required for each residue to the pool
-        args = [(res, mol, mae_st, r_dir, mae_fname, in_path, e_dir) for res in mol.residue]
+        args = [(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir) for res in mol.residue]
         pool.starmap(calc_single_point_residue, args)
 
 if __name__ == "__main__":
 
-    mae_path = "/home/zap22001/charge_diff/qsite_OCPO-pH-7.4.mae"
-    in_path = "/home/zap22001/charge_diff/qsite_OCPO-pH-7.4.in"
-    num_processes=16
+    parser = argparse.ArgumentParser(description="Process MAE and input files")
+
+    parser.add_argument('-m', '--mae_path', type=str, required=True, help='Path to .mae file')
+    parser.add_argument('-i', '--in_path', type=str, required=True, help='Path to .in file')
+    parser.add_argument('-p', '--num_processes', type=int, default=12, help='Number of CPU processes to use (default: 12)')
+    args = parser.parse_args()
+
+    mae_path = os.path.realpath(args.mae_path)
+    in_path = os.path.realpath(args.in_path)
+    num_processes=12
 
     mae_fname=os.path.basename(mae_path)
 
@@ -57,24 +83,24 @@ if __name__ == "__main__":
 
     mae_st = structure.StructureReader.read(mae_path)
 
-    e_dir="energies"
-    os.makedirs(e_dir, exist_ok=True)
+    p_dir="parameters"
+    os.makedirs(p_dir, exist_ok=True)
     r_dir="residues"
     os.makedirs(r_dir, exist_ok=True)
 
 
-#iterate through all molecules in structure
+    #iterate through all molecules in structure
     for mol in mae_st.molecule:
         #Skip molecules which are in qmm region
         if mol.number in molid_list:
             print(f"molecule #{mol.number} in qmm region, skipping molecule")
         else:
             #Asynchronously calculate for all residues in a molecule
-            process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, e_dir)
+            process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, p_dir)
 
         """
         for res in mol.residue:
-            calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, e_dir)
+            calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir)
             exit()
         """
             #DO THIS PART ASYNCHRONOUSLY
