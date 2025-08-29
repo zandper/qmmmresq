@@ -7,21 +7,10 @@ import shutil
 import subprocess
 import multiprocessing
 import argparse
+import textscrape
 #print("USER:", os.environ.get("USER"))
 #exit()
 #path ="charg"
-
-def extract_first_wavelength(file_path):
-    with open(file_path, 'r') as file:
-        content = file.read()
-    # Search for wavelength in nm
-    match = re.search(r'Excitation energy =.*?([\d.]+)\s*nm', content)
-    
-    if match:
-        wavelength_nm = float(match.group(1))
-        return wavelength_nm
-    else:
-        return "WAVELENGTH NOT FOUND"
 
 def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir):
     copy_st = mae_st.copy() # Make copy of original structure 
@@ -44,7 +33,7 @@ def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir
     p.wait()
     out_path = mae_copy_path.replace(".mae",".out")
     result = output.QSiteOutput(out_path)
-    wavelength_nm = extract_first_wavelength(out_path)
+    wavelength_nm = textscrape.extract_first_wavelength(out_path)
     print(f"Total_E: {result.energy}")
     print(f"Wavelength: {wavelength_nm}")
 

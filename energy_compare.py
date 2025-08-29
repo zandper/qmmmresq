@@ -11,19 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io
 plotly.io.renderers.default = 'browser'
-
-
-def extract_first_wavelength(file_path):
-    with open(file_path, 'r') as file:
-        content = file.read()
-    # Search for wavelength in nm
-    match = re.search(r'Excitation energy =.*?([\d.]+)\s*nm', content)
-    
-    if match:
-        wavelength_nm = float(match.group(1))
-        return wavelength_nm
-    else:
-        return "WAVELENGTH NOT FOUND"
+import textscrape
 
 
 def concat_param(folder_path):
@@ -88,7 +76,7 @@ def plot(df):
 #original energy
 original_log_path = "./qsite_OCPO-pH-7.4.out"
 o_energy = output.QSiteOutput(original_log_path).energy
-o_lamb =extract_first_wavelength(original_log_path)
+o_lamb =textscrape.extract_first_wavelength(original_log_path)
 
 folder_path = './parameters/'
 
