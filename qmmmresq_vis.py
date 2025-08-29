@@ -25,12 +25,7 @@ def concat_param(folder_path):
     return(all_text)
 
 
-def plot_bar(df):
-    # Hover text
-    df['hover'] = df.apply(
-        lambda row: "<br>".join([f"{col}: {row[col]}" for col in df.columns]),
-        axis=1
-    )
+def plot_bar(df,fname):
     # Plotly bar chart
     fig = px.bar(
         df,
@@ -45,11 +40,11 @@ def plot_bar(df):
     hovertemplate="%{hovertext}<extra></extra>",  # use your custom hover text
     hovertext=df['hover']
     )
-    bar_fname = 'bar.html'
-    print('saving bargraph as{bar_fname}')
+    bar_fname = f'{fname}_bar.html'
+    print(f'saving bargraph as{bar_fname}')
     fig.write_html(bar_fname)
 
-def plot_scatter(df):
+def plot_scatter(df,fname):
 
     # Automatically detect the first cr_dist_* column
     cr_dist_cols = [col for col in df.columns if col.startswith('cr_dist')]
@@ -57,12 +52,6 @@ def plot_scatter(df):
         raise ValueError("No 'cr_dist_*' columns found in the dataframe.")
     cr_dist_col = cr_dist_cols[0]
     print(f"Using '{cr_dist_col}' for scatter plot")
-    
-    #Hover Text
-    df['hover'] = df.apply(
-        lambda row: "<br>".join([f"{col}: {row[col]}" for col in df.columns]),
-        axis=1
-    )
 
     # Scatter plot using Plotly
     df.sort_values(by=cr_dist_col,ascending=True, inplace=True)
@@ -86,8 +75,8 @@ def plot_scatter(df):
         hovertemplate="%{hovertext}<extra></extra>"
     ))
     # Save plot as HTML
-    scatter_fname = 'scatter.html'
-    print('saving bargraph as{scatter_fname}')
+    scatter_fname = f'{fname}_scatter.html'
+    print(f'saving bargraph as{scatter_fname}')
     fig2.write_html(scatter_fname)
 
 if __name__ == "__main__":
@@ -143,5 +132,13 @@ if __name__ == "__main__":
     print(mae_df)
     df = df.merge(mae_df, on='resnum', how='left')
     print(df)
-    plot_bar(df)
-    plot_scatter(df)
+    fname = in_path.replace(".in","")
+
+    # Hover text
+    df['hover'] = df.apply(
+        lambda row: "<br>".join([f"{col}: {row[col]}" for col in df.columns]),
+        axis=1
+    )
+
+    plot_bar(df,fname)
+    plot_scatter(df,fname)
