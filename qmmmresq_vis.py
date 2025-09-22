@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # Get native energy / wavelength from native.log path
     o_energy = output.QSiteOutput(native_out_path).energy
     o_lamb =textscrape.extract_first_wavelength(native_out_path)
-
+    print(o_lamb)
     # Convert text to DataFrame
     df = pandas.read_csv(StringIO(concat_param(os.path.realpath(args.param_path))), sep="\t")
     df.columns = ['resnum', 'energy', 'lambda']

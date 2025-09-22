@@ -28,7 +28,7 @@ def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir
     with structure.StructureWriter(mae_copy_path) as writer: #write modified .mae file
         writer.append(copy_st)
     cmd_dir = os.path.realpath(res_dir)
-    p = subprocess.Popen(['qsite', '-WAIT', os.path.basename(in_copy_path)], cwd=cmd_dir) #run qsite calculation
+    p = subprocess.Popen(['qsite', '-WAIT','-HOST','localhost', os.path.basename(in_copy_path)], cwd=cmd_dir) #run qsite calculation
     p.wait()
     out_path = mae_copy_path.replace(".mae",".out")
     result = output.QSiteOutput(out_path)
