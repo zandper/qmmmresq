@@ -1,3 +1,3 @@
 TODO:
-*Only set chargse of side chains to 0
+*Only set charge of side chains to 0
 *Add jaguar parallelized stuff

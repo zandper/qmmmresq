@@ -17,3 +17,20 @@ def extract_first_wavelength(file_path):
         return wavelength_nm
     else:
         return "WAVELENGTH NOT FOUND"
+
+def add_mae_charges_yes(in_file_path):
+    # Read the file
+    with open(in_file_path, "r") as f:
+        lines = f.readlines()
+    # Check if 'use_mae_charges=YES' already exists
+    if not any("use_mae_charges=YES" in line for line in lines):
+        new_lines = []
+        for line in lines:
+            new_lines.append(line)
+            if line.strip() == "&mmkey":
+                # Insert after &mmkey
+                new_lines.append("use_mae_charges=YES\n")
+        # Write back
+        with open(in_file_path, "w") as f:
+            f.writelines(new_lines)
+        print('.in FILE MODIFIED, ADDED "use_mae_charges=YES" ')
