@@ -2,10 +2,10 @@
 
 #NEED TO ADD USE_MAE_CHARGES TO .IN FILE
 from schrodinger import structure
-from schrodinger.structutils import analyze
+from schrodinger.structutils import analyze, measure
 from schrodinger.application.qsite import output
+from schrodinger.application.qsite.input import QSiteInput
 #from schrodinger.test import mmshare_data_fil
-
 import os
 import re
 import shutil
@@ -14,9 +14,24 @@ import multiprocessing
 import argparse
 from utils import textscrape
 
-def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir, n_cpu):
+
+def get_nearby_resnums(mae_st, ligand_asl, cutoff_angstrom):
+    ligand_atoms = set(analyze.evaluate_asl(mae_st, ligand_asl))
+    if not ligand_atoms:
+        raise ValueError(f"No atoms selected by ASL: '{ligand_asl}'")
+
+    close_atom_indices = set(
+        measure.get_atoms_close_to_subset(mae_st, ligand_atoms, cutoff_angstrom)
+    )
+    # remove atoms that are actually in the QM ASL
+    close_atom_indices -= ligand_atoms
+    resnums = {mae_st.atom[idx].resnum for idx in close_atom_indices}
+    return sorted(resnums)
+
+
+def calc_single_point_residue(res, mae_st, r_dir, mae_fname, in_path, p_dir, n_cpu):
     copy_st = mae_st.copy() # Make copy of original structure 
-    sidechain_ASL = f"{res.getAsl()} AND ( sidechain )" #Generate ASL of residue sidechain
+    sidechain_ASL = f"{res.getAsl()} AND NOT ( backbone )" #Generate ASL of residue sidechain
     atom_indices = analyze.evaluate_asl(copy_st,sidechain_ASL) #evaluate ASL
     for i in atom_indices: # Set partial charge of all atoms in residue to 0
         atom= copy_st.atom[i]
@@ -38,8 +53,8 @@ def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir
     cmd_dir = os.path.realpath(res_dir)
     cmd =['qsite', '-WAIT','-HOST','localhost','-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
     #print(cmd)
-    p = subprocess.Popen(cmd, cwd=cmd_dir) #run qsite calculation
-    p.wait()
+    #p = subprocess.Popen(cmd, cwd=cmd_dir) #run qsite calculation
+    #p.wait()
     try:
         out_path = mae_copy_path.replace(".mae",".out")
         result = output.QSiteOutput(out_path)
@@ -55,19 +70,25 @@ def calc_single_point_residue(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir
         print(f"Error reading {out_path}: {e}")
 
 
-def process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, p_dir,num_processes,n_cpu):
-    # Use multiprocessing Pool to parallelize the work
+def process_all_residues( mae_st, r_dir, mae_fname, in_path, p_dir,num_processes, n_cpu, resnum_list):
+    residues = [res for res in mae_st.residue if res.resnum in resnum_list]
+    print("length:",len(residues))
     with multiprocessing.Pool(processes=num_processes) as pool:
-        # Pass all arguments required for each residue to the pool
-        args = [(res, mol, mae_st, r_dir, mae_fname, in_path, p_dir,n_cpu) for res in mol.residue]
+        args = [
+            (res, mae_st, r_dir, mae_fname, in_path, p_dir, n_cpu)
+            for res in residues
+        ]
         pool.starmap(calc_single_point_residue, args)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Process MAE and input files")
     parser.add_argument('-i', '--in_path', type=str, required=True, help='Path to .in file')
-    parser.add_argument('-c', '--num_cpus', type=int, default=16, help='Number of CPU processors to use (default: 16) NEEDS TO BE DIVISIBLE BY NUM_PROCESS')
+    parser.add_argument('-c', '--num_cpus', type=int, default=16, help='Number of CPU processors to use per process')
     parser.add_argument('-p', '--num_processes', type=int, default=4, help='Number of concurrent processes to spawn (default: 4)')
+    parser.add_argument('-a','--asl',type=str,default=None,help='Manually define residues in QM')
+    parser.add_argument('-d','--distance',type=float, default=None,help='Limit range from QM region')
+
     args = parser.parse_args()
 
     in_path = os.path.realpath(args.in_path)
@@ -77,23 +98,29 @@ if __name__ == "__main__":
     molid_list = textscrape.get_molids(in_path)
     #print(molid_list)
     num_processes = args.num_processes
-    n_cpu = args.num_cpus/num_processes
+    n_cpu = args.num_cpus
     mae_st = structure.StructureReader.read(mae_path)
-
+    
+    resnum_list = get_nearby_resnums(mae_st, args.asl, args.distance)
+    #resnum_list = [303,302]
+    print(f"evaluating {len(resnum_list)} residues")
+    
     p_dir="parameters"
     os.makedirs(p_dir, exist_ok=True)
     r_dir="residues"
     os.makedirs(r_dir, exist_ok=True)
+    
+    process_all_residues(mae_st, r_dir, mae_fname, in_path, p_dir, num_processes, n_cpu,resnum_list)
 
     #iterate through all molecules in structure
-    for mol in mae_st.molecule:
-        #Skip molecules which are in qmm region
-        if mol.number in molid_list:
-            print(f"molecule #{mol.number} in qmm region, skipping molecule")
-        else:
 
+#        #Skip molecules which are in qmm region
+#        if mol.number in molid_list:
+#            print(f"molecule #{mol.number} in qmm region, skipping molecule")
+#        else:
+#            exit()
             # Asynchronous calculation
-            process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, p_dir, num_processes, n_cpu)
+            #process_all_residues(mol, mae_st, r_dir, mae_fname, in_path, p_dir, num_processes, n_cpu)
 
             #Synchronous calculation KEEP FOR DEBUG
             #for res in mol.residue:
