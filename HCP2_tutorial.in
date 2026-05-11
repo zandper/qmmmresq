@@ -1,0 +1,29 @@
+entry_name:
+  
+MAEFILE: qsite_HCP2-A-180B1dihedral-noMD.mae
+&gen 
+vshift=1.0 
+iuhf=0 
+basis=lacvp* 
+maxit=100 
+itddft=1
+itda=1
+isolv=2
+trust=0.5 
+dftname=cam-b3lyp-d3 
+iacc=1 
+mmqm=1
+molchg= 0
+&
+&mmkey 
+use_mae_charges=YES
+solvation_method=pbf
+mmimjobtype=1024
+maxcycles=0 
+qsite_ff="s-opls" 
+remove_zob_params=0
+&
+&qmregion
+ molid
+     2
+&
