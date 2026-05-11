@@ -73,9 +73,9 @@ def get_nearby_mol_res(mae_st, qm_asl, cutoff_angstrom=None, manual_asl=None, pr
         for i in nearby_atoms
     })
 
-def calc_single_point_residue(molnum, resnum, mae_path, r_dir, mae_fname, in_path, p_dir, n_cpu, native_lambda):
+def calc_single_point_residue(molnum, resnum, mae_path, r_dir, mae_fname, in_path, p_dir, n_cpu, native_lambda, max_retries=3):
 
-    # ---- Build file identidfiers----
+    # ---- Build file identifiers----
     res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
     res_dir = os.path.join(r_dir, res_num_str)
     mae_copy_path = os.path.join(res_dir, mae_fname)
@@ -92,52 +92,58 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, mae_fname, in_pat
         except Exception:
             print(f"[WARNING] Could not validate existing .out, rerunning.")
 
-    print(f"calculating {res_num_str}")
-    os.makedirs(res_dir, exist_ok=True)
+    for attempt in range(1, max_retries + 1):
+        print(f"calculating {res_num_str} (attempt {attempt}/{max_retries})")
+        os.makedirs(res_dir, exist_ok=True)
 
-    # ---- Load structure fresh ----
-    mae_st = structure.StructureReader.read(mae_path)
+        try:
+            # ---- Load structure fresh ----
+            mae_st = structure.StructureReader.read(mae_path)
 
-    # Select target residue
-    target_mol = next(m for m in mae_st.molecule if m.number == molnum)
-    target_res = next(r for r in target_mol.residue if r.resnum == resnum)
+            # Select target residue
+            target_mol = next(m for m in mae_st.molecule if m.number == molnum)
+            target_res = next(r for r in target_mol.residue if r.resnum == resnum)
 
-    sidechain_ASL = f"{target_res.getAsl()} AND NOT ( backbone )"
-    atom_indices = analyze.evaluate_asl(mae_st, sidechain_ASL)
+            sidechain_ASL = f"{target_res.getAsl()} AND NOT ( backbone )"
+            atom_indices = analyze.evaluate_asl(mae_st, sidechain_ASL)
 
-    for i in atom_indices:
-        atom = mae_st.atom[i]
-        atom.partial_charge = 0
-        atom.solvation_charge = 0
-        atom.color = (0, 255, 0)
+            for i in atom_indices:
+                atom = mae_st.atom[i]
+                atom.partial_charge = 0
+                atom.solvation_charge = 0
+                atom.color = (0, 255, 0)
 
-    # ---- Prepare input files ----
-    in_copy_path = mae_copy_path.replace(".mae", ".in")
-    shutil.copyfile(in_path, in_copy_path)
+            # ---- Prepare input files ----
+            in_copy_path = mae_copy_path.replace(".mae", ".in")
+            shutil.copyfile(in_path, in_copy_path)
 
-    with structure.StructureWriter(mae_copy_path) as writer:
-        writer.append(mae_st)
+            with structure.StructureWriter(mae_copy_path) as writer:
+                writer.append(mae_st)
 
-    # ---- Run QSite ----
-    cmd = ['qsite', '-WAIT', '-HOST', 'localhost','-PARALLEL', str(int(n_cpu)),os.path.basename(in_copy_path)]
-    print(cmd)
-    p = subprocess.Popen(cmd, cwd=res_dir)
-    p.wait()
+            # ---- Run QSite ----
+            cmd = ['qsite', '-WAIT', '-HOST', 'localhost','-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
+            print(cmd)
+            p = subprocess.Popen(cmd, cwd=res_dir)
+            p.wait()
 
-    # ---- Post-processing ----
-    try:
-        result = output.QSiteOutput(out_path)
-        wavelength_nm = utils.textscrape.extract_first_wavelength(out_path)
-        res_contrib = wavelength_nm - native_lambda
-        print(f"Total_E: {result.energy}, Residue Contribution:{res_contrib}, Wavelength: {wavelength_nm}")
-        summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
-        with open(summary_path, "w") as f:
-            f.write(f"{molnum}\t{resnum}\t{result.energy}\t{res_contrib}\t{wavelength_nm}\n")
-        #remove res_dir
-        shutil.rmtree(res_dir)
-    except Exception as e:
-        print(f"Error reading {out_path}: {e}")
+            # ---- Post-processing ----
+            result = output.QSiteOutput(out_path)
+            wavelength_nm = utils.textscrape.extract_first_wavelength(out_path)
+            res_contrib = wavelength_nm - native_lambda
+            print(f"Total_E: {result.energy}, Residue Contribution:{res_contrib}, Wavelength: {wavelength_nm}")
+            summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
+            with open(summary_path, "w") as f:
+                f.write(f"{molnum}\t{resnum}\t{result.energy}\t{res_contrib}\t{wavelength_nm}\n")
+            shutil.rmtree(res_dir)
+            return  # Success, exit function
 
+        except Exception as e:
+            print(f"Attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                print(f"Giving up on {res_num_str}")
+                # Keep directory for debugging
+            else:
+                shutil.rmtree(res_dir, ignore_errors=True)  # Clean up for retry
 
 def process_all_residues(mae_path, r_dir, mae_fname, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
     
