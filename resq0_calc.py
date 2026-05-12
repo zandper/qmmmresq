@@ -198,9 +198,20 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         
         # Check if output exists but summary doesn't (process it)
         if os.path.exists(out_path):
-            print(f"[PROCESS] Output exists for {res_num_str}, processing...")
-            process_result(out_path, molnum, resnum, p_dir, native_lambda)
-            continue 
+            # Check if output is valid before processing
+            try:
+                with open(out_path) as f:
+                    text = f.read()
+                    if "completed on" in text.lower():
+                        print(f"[PROCESS] Valid output exists for {res_num_str}, processing...")
+                        process_result(out_path, molnum, resnum, p_dir, native_lambda)
+                        continue
+                    else:
+                        print(f"[WARNING] Output exists but incomplete for {res_num_str}, will rerun...")
+                        os.remove(out_path)  # Remove invalid output
+            except Exception:
+                print(f"[WARNING] Could not read output for {res_num_str}, will rerun...")
+                os.remove(out_path)
         
         # Prepare new input files
         prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
