@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from schrodinger import structure
+import sys
 
 # Residue classification
 pos_charged = {"ARG", "LYS", "HIS"}
@@ -80,7 +81,8 @@ def create_frame_contrib_matrix(param_folders, mae_st):
     matrix['mean'] = matrix.mean(axis=1)
     matrix['std'] = matrix.std(axis=1)
     matrix['n_frames'] = matrix.count(axis=1)
-    
+    matrix['min'] = matrix.min(axis=1)
+    matrix['max'] = matrix.max(axis=1)
     return matrix
 
 
@@ -88,6 +90,7 @@ def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8):
     """
     Horizontal bar plot colored by residue class.
     Highlights top N residues by absolute mean contribution in bold on y-axis.
+    Color bars stretch from min to max value; error bars are centered at mean.
     """
     # Prepare data
     plot_df = df.reset_index().copy()
@@ -107,19 +110,54 @@ def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8):
     
     y_positions = np.arange(len(plot_df))
     colors = plot_df["res_class"].map(COLOR_MAP)
-    
-    # Add error bars if std available
-    ax.barh(
-        y_positions,
+
+    has_std = 'std' in plot_df.columns
+    has_min = 'min' in plot_df.columns
+    has_max = 'max' in plot_df.columns
+
+    if has_min and has_max:
+        # Draw bars from min to max
+        bar_widths = plot_df["max"] - plot_df["min"]
+        ax.barh(
+            y_positions,
+            bar_widths,
+            left=plot_df["min"],        # bars start at min
+            color=colors,
+            edgecolor="black",
+            height=bar_height,
+        )
+    else:
+        # Fallback: draw bars from 0 to mean (original behaviour)
+        ax.barh(
+            y_positions,
+            plot_df["mean"],
+            color=colors,
+            edgecolor="black",
+            height=bar_height,
+        )
+
+    # Draw error bars manually, always centered at mean
+    if has_std:
+        ax.errorbar(
+            x=plot_df["mean"],
+            y=y_positions,
+            xerr=plot_df["std"],
+            fmt='none',                 # no marker
+            ecolor='black',
+            elinewidth=1.5,
+            capsize=3,
+            capthick=1.5,
+        )
+    # Draw dot at mean value
+    ax.scatter(
         plot_df["mean"],
-        xerr=plot_df.get('std', None),
-        color=colors,
-        edgecolor="black",
-        height=bar_height,
-        capsize=3,
-        error_kw={'elinewidth': 1.5, 'capthick': 1.5}
+        y_positions,
+        color='black',
+        edgecolor='black',
+        s=10,
+        zorder=5,        # draw on top of bars and error bars
+        linewidths=1.5,
     )
-    
     # Y labels: bold top N
     y_labels = []
     for i, label in enumerate(plot_df["res_label"]):

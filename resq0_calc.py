@@ -113,7 +113,7 @@ def process_result(out_path, molnum, resnum, p_dir, native_lambda):
     
     try:
         result = output.QSiteOutput(out_path)
-        wavelength_nm = utils.textscrape.extract_first_wavelength(out_path)
+        wavelength_nm = float(utils.textscrape.extract_first_wavelength(out_path))
         res_contrib = wavelength_nm - native_lambda
         print(f"Residue {res_num_str}: Total_E: {result.energy}, Contribution: {res_contrib}, Wavelength: {wavelength_nm}")
         
