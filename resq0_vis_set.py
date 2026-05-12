@@ -50,7 +50,7 @@ def create_frame_contrib_matrix(param_folders, mae_st):
     rows = []
     for folder in param_folders:
         parts = os.path.basename(folder).split('_')
-        frame_num = parts[-2]
+        frame_num = parts[1]
         
         for txt_file in glob.glob(os.path.join(folder, "*.txt")):
             with open(txt_file) as f:
@@ -162,21 +162,56 @@ def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8):
 
 
 if __name__ == "__main__":
-    mae_path = './000001_geopt.01.mae'
-    mae_st = structure.StructureReader.read(mae_path)
+    import argparse
     
-    param_folders = sorted(glob.glob('./parameters_*'))
+    parser = argparse.ArgumentParser(description='Visualize residue contributions from QM/MM calculations')
+    parser.add_argument('-pp', '--param_folders', nargs='+', required=True,
+                       help='Parameter folder(s) containing .txt files (e.g., ./parameters_000001 or ./parameters_*)')
+    parser.add_argument('-m', '--mae_path', type=str, default='./000001_geopt.01.mae',
+                       help='Path to MAE file for residue mapping (default: ./000001_geopt.01.mae)')
+    parser.add_argument('-o', '--output', type=str, default='contributions',
+                       help='Output file prefix (default: contributions)')
+    
+    args = parser.parse_args()
+    
+    # Expand glob patterns if any
+    param_folders = []
+    for folder in args.param_folders:
+        if '*' in folder or '?' in folder:
+            param_folders.extend(sorted(glob.glob(folder)))
+        else:
+            param_folders.append(folder)
+    
+    print(f"Found {len(param_folders)} parameter folders:")
+    for f in param_folders:
+        print(f"  {f}")
+    
+    # Read MAE file
+    if not os.path.exists(args.mae_path):
+        print(f"Warning: MAE file not found: {args.mae_path}")
+        print("Residue codes will be 'UNK'")
+        mae_st = None
+    else:
+        mae_st = structure.StructureReader.read(args.mae_path)
+    
+    # Create matrix
     matrix = create_frame_contrib_matrix(param_folders, mae_st)
     
+    if matrix.empty:
+        print("No data found!")
+        sys.exit(1)
+    
     # Plot all residues
-    plot_bar_grouped(matrix, 'all_residues', title='All Residue Contributions', top_n=10)
+    plot_bar_grouped(matrix, f'{args.output}_all_residues', 
+                    title='All Residue Contributions', top_n=10)
     
     # Plot top 25 by absolute contribution
     top25_indices = matrix['mean'].abs().nlargest(25).index
     matrix_top25 = matrix.loc[top25_indices]
-    plot_bar_grouped(matrix_top25, 'top25_residues', title='Top 25 Residue Contributions', top_n=5)
+    plot_bar_grouped(matrix_top25, f'{args.output}_top25_residues', 
+                    title='Top 25 Residue Contributions', top_n=5)
     
     # Save data
-    matrix.reset_index().to_csv('contributions.csv', index=False)
+    matrix.reset_index().to_csv(f'{args.output}.csv', index=False)
     print(f"Processed {len(matrix)} residues")
-    print("Saved: contributions.csv")
+    print(f"Saved: {args.output}.csv")
