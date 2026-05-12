@@ -187,12 +187,22 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
     # Prepare all jobs
     in_files = []
     for molnum, resnum in molnum_resnum_list:
-        summary_path = os.path.join(p_dir, f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}.txt")
+        res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
+        summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
+        out_path = os.path.join(r_dir, f"{res_num_str}.out")
         
+        # Check if summary exists (already completed)
         if os.path.exists(summary_path):
             print(f"[SKIP] {res_num_str} already completed.")
             continue
         
+        # Check if output exists but summary doesn't (process it)
+        if os.path.exists(out_path):
+            print(f"[PROCESS] Output exists for {res_num_str}, processing...")
+            process_result(out_path, molnum, resnum, p_dir, native_lambda)
+            continue 
+        
+        # Prepare new input files
         prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
         if prepared:
             res_num_str, in_copy_path = prepared
@@ -204,7 +214,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         return
     
     # Run jaguar on all input files
-    cmd = ['jaguar', 'run'] + in_files + ['-PARALLEL', str(int(n_cpu)),'-optimize_cpus', '-WAIT']
+    cmd = ['jaguar', 'run'] + in_files + ['-PARALLEL', str(int(n_cpu)), '-optimize_cpus', '-WAIT']
     print(f"Running in {r_dir}: {' '.join(cmd)}")
     
     try:
@@ -217,15 +227,11 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         
         print("Jaguar calculations completed. Processing results...")
         
-        # Process results
+        # Process results for all residues (process_result will skip if summary exists)
         for molnum, resnum in molnum_resnum_list:
             res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
             out_path = os.path.join(r_dir, f"{res_num_str}.out")
             process_result(out_path, molnum, resnum, p_dir, native_lambda)
-        
-        # Clean up
-        shutil.rmtree(r_dir)
-        os.makedirs(r_dir, exist_ok=True)
         
     except Exception as e:
         print(f"Error during Jaguar run: {e}")
@@ -274,4 +280,4 @@ if __name__ == "__main__":
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
 
     
-    shutil.rmtree(r_dir)
+    #shutil.rmtree(r_dir)
