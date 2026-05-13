@@ -128,7 +128,6 @@ def process_result(out_path, molnum, resnum, p_dir, native_lambda):
 def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, max_retries=3):
     """Calculate single point residue contribution using QSite directly."""
     res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
-    res_dir = os.path.join(r_dir, res_num_str)
     summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
     
     if os.path.exists(summary_path):
@@ -137,11 +136,11 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
     
     for attempt in range(1, max_retries + 1):
         print(f"calculating {res_num_str} (attempt {attempt}/{max_retries})")
-        os.makedirs(res_dir, exist_ok=True)
+
         
         try:
             # Prepare files
-            prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, res_dir)
+            prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
             if not prepared:
                 raise Exception("Failed to prepare files")
             
@@ -150,8 +149,8 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             
             # Run QSite
             cmd = ['qsite', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
-            print(f"Running in {res_dir}: {' '.join(cmd)}")
-            p = subprocess.Popen(cmd, cwd=res_dir)
+            print(f"Running in {r_dir}: {' '.join(cmd)}")
+            p = subprocess.Popen(cmd, cwd=r_dir)
             p.wait()
             
             if p.returncode != 0:
@@ -159,7 +158,7 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             
             # Process result
             if process_result(out_path, molnum, resnum, p_dir, native_lambda):
-                shutil.rmtree(res_dir)
+                #shutil.rmtree(res_dir)
                 return
             
         except Exception as e:
@@ -167,7 +166,8 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             if attempt == max_retries:
                 print(f"Giving up on {res_num_str}")
             else:
-                shutil.rmtree(res_dir, ignore_errors=True)
+                print(f"removing{r_dir}")
+                shutil.rmtree(r_dir, ignore_errors=True)
 
 
 def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
@@ -192,6 +192,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         out_path = os.path.join(r_dir, f"{res_num_str}.out")
         
         # Check if summary exists (already completed)
+        print(f"looking for prev at {summary_path}")
         if os.path.exists(summary_path):
             print(f"[SKIP] {res_num_str} already completed.")
             continue
@@ -260,6 +261,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     in_path = os.path.realpath(args.in_path)
+    print(f"in_path: {in_path}")
     utils.textscrape.add_mae_charges_yes(in_path)
     
     with open(in_path) as f:
@@ -291,4 +293,4 @@ if __name__ == "__main__":
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
 
     
-    #shutil.rmtree(r_dir)
+    shutil.rmtree(r_dir)
