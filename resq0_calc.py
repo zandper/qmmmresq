@@ -301,6 +301,5 @@ if __name__ == "__main__":
         process_all_residues(mae_path, r_dir, in_path, p_dir, args.num_processes, args.num_cpus, native_lambda, molnum_resnum_list)
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
-
-    # change to remove only empty dir
-    #shutil.rmtree(r_dir)
+        
+    shutil.rmtree(r_dir)
