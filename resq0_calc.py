@@ -226,6 +226,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         return
     
     # Run jaguar on all input files
+    print(f"Calculating SPE for {len(in_files)} residues")
     cmd = ['jaguar', 'run'] + in_files + ['-PARALLEL', str(int(n_cpu)), '-optimize_cpus', '-WAIT']
     print(f"Running in {r_dir}: {' '.join(cmd)}")
     
