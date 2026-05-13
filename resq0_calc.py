@@ -8,6 +8,7 @@ from schrodinger.application.qsite.input import QSiteInput
 #from schrodinger.test import mmshare_data_fil
 import os
 import re
+import glob
 import shutil
 import subprocess
 import multiprocessing
@@ -109,7 +110,7 @@ def process_result(out_path, molnum, resnum, p_dir, native_lambda):
     summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
     
     if os.path.exists(summary_path):
-        return
+        return True
     
     try:
         result = output.QSiteOutput(out_path)
@@ -244,8 +245,16 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         for molnum, resnum in molnum_resnum_list:
             res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
             out_path = os.path.join(r_dir, f"{res_num_str}.out")
-            process_result(out_path, molnum, resnum, p_dir, native_lambda)
-        
+            if process_result(out_path, molnum, resnum, p_dir, native_lambda):
+                # Remove related items in r_dir if successful
+                base = out_path.rsplit('.', 1)[0]
+                print(f"Successfully processed {res_num_str}, removing {base}.*")
+                for file_path in glob.glob(f"{base}.*"):
+                    os.remove(file_path)
+                    print(f"  Removed {file_path}")
+            else:
+                print(f"Failed to process {res_num_str}, keeping files for debugging")
+
     except Exception as e:
         print(f"Error during Jaguar run: {e}")
 
@@ -293,5 +302,5 @@ if __name__ == "__main__":
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
 
-    
-    shutil.rmtree(r_dir)
+    # change to remove only empty dir
+    #shutil.rmtree(r_dir)
