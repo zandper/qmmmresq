@@ -115,7 +115,7 @@ def process_result(out_path, molnum, resnum, p_dir, native_lambda):
     try:
         result = output.QSiteOutput(out_path)
         wavelength_nm = float(utils.textscrape.extract_first_wavelength(out_path))
-        res_contrib = wavelength_nm - native_lambda
+        res_contrib = native_lambda - wavelength_nm
         print(f"Residue {res_num_str}: Total_E: {result.energy}, Contribution: {res_contrib}, Wavelength: {wavelength_nm}")
         
         with open(summary_path, "w") as f:
@@ -168,7 +168,7 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
                 print(f"Giving up on {res_num_str}")
             else:
                 print(f"removing{r_dir}")
-                shutil.rmtree(r_dir, ignore_errors=True)
+                #shutil.rmtree(r_dir, ignore_errors=True)
 
 
 def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
@@ -210,10 +210,10 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                         continue
                     else:
                         print(f"[WARNING] Output exists but incomplete for {res_num_str}, will rerun...")
-                        os.remove(out_path)  # Remove invalid output
+                        #os.remove(out_path)  # Remove invalid output
             except Exception:
                 print(f"[WARNING] Could not read output for {res_num_str}, will rerun...")
-                os.remove(out_path)
+                #os.remove(out_path)
         
         # Prepare new input files
         prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
@@ -250,7 +250,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                 base = out_path.rsplit('.', 1)[0]
                 print(f"Successfully processed {res_num_str}, removing {base}.*")
                 for file_path in glob.glob(f"{base}.*"):
-                    os.remove(file_path)
+                    #os.remove(file_path)
                     print(f"  Removed {file_path}")
             else:
                 print(f"Failed to process {res_num_str}, keeping files for debugging")
@@ -302,4 +302,4 @@ if __name__ == "__main__":
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
         
-    shutil.rmtree(r_dir)
+    #shutil.rmtree(r_dir)

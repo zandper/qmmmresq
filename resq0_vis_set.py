@@ -65,7 +65,7 @@ def create_frame_contrib_matrix(param_folders, mae_st):
                             'resnum': resnum,
                             'rescode': rescode_map.get((molnum, resnum), 'UNK'),
                             'frame': frame_num,
-                            'contrib': float(parts_line[-2])
+                            'contrib': float(parts_line[-2])#*-1 #REMOVE THIS LATER
                         })
     
     if not rows:
@@ -87,117 +87,56 @@ def create_frame_contrib_matrix(param_folders, mae_st):
 
 
 def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8):
-    """
-    Horizontal bar plot colored by residue class.
-    Highlights top N residues by absolute mean contribution in bold on y-axis.
-    Color bars stretch from min to max value; error bars are centered at mean.
-    """
-    # Prepare data
     plot_df = df.reset_index().copy()
-    
-    # Add classification and labels
     plot_df['res_class'] = plot_df['rescode'].apply(classify_residue)
     plot_df['res_label'] = plot_df['rescode'] + plot_df['resnum'].astype(str)
-    
-    # Sort by class and mean contribution
     plot_df = plot_df.sort_values(by=["res_class", "mean"], ascending=[True, True]).reset_index(drop=True)
-    
-    # Identify top N residues by |mean|
     top_indices = plot_df["mean"].abs().nlargest(top_n).index
-    
-    # Build plot
+
+    # Identify frame columns (everything that isn't a summary stat or metadata)
+    meta_cols = {'molnum', 'resnum', 'rescode', 'res_class', 'res_label',
+                 'mean', 'std', 'n_frames', 'min', 'max'}
+    frame_cols = [c for c in plot_df.columns if c not in meta_cols]
+    print('FRAME COLS:',frame_cols)
+    y_pos = np.arange(len(plot_df))
     fig, ax = plt.subplots(figsize=(12, max(6, len(plot_df) * 0.4)))
-    
-    y_positions = np.arange(len(plot_df))
-    colors = plot_df["res_class"].map(COLOR_MAP)
 
-    has_std = 'std' in plot_df.columns
-    has_min = 'min' in plot_df.columns
-    has_max = 'max' in plot_df.columns
+    ax.barh(y_pos, plot_df["mean"], color=plot_df["res_class"].map(COLOR_MAP),
+            edgecolor="black", height=bar_height)
 
-    if has_min and has_max:
-        # Draw bars from min to max
-        bar_widths = plot_df["max"] - plot_df["min"]
-        ax.barh(
-            y_positions,
-            bar_widths,
-            left=plot_df["min"],        # bars start at min
-            color=colors,
-            edgecolor="black",
-            height=bar_height,
-        )
-    else:
-        # Fallback: draw bars from 0 to mean (original behaviour)
-        ax.barh(
-            y_positions,
-            plot_df["mean"],
-            color=colors,
-            edgecolor="black",
-            height=bar_height,
-        )
+    if 'std' in plot_df.columns:
+        ax.errorbar(plot_df["mean"], y_pos, xerr=plot_df["std"],
+                    fmt='none', ecolor='black', elinewidth=1.5, capsize=3, capthick=1.5)
 
-    # Draw error bars manually, always centered at mean
-    if has_std:
-        ax.errorbar(
-            x=plot_df["mean"],
-            y=y_positions,
-            xerr=plot_df["std"],
-            fmt='none',                 # no marker
-            ecolor='black',
-            elinewidth=1.5,
-            capsize=3,
-            capthick=1.5,
-        )
-    # Draw dot at mean value
-    ax.scatter(
-        plot_df["mean"],
-        y_positions,
-        color='black',
-        edgecolor='black',
-        s=10,
-        zorder=5,        # draw on top of bars and error bars
-        linewidths=1.5,
-    )
-    # Y labels: bold top N
-    y_labels = []
-    for i, label in enumerate(plot_df["res_label"]):
-        if i in top_indices:
-            y_labels.append(f"$\\bf{{{label}}}$")
-        else:
-            y_labels.append(label)
-    
-    ax.set_yticks(y_positions)
+    # --- Per-frame dots ---
+    if frame_cols:
+        for i, row in plot_df.iterrows():
+            vals = row[frame_cols].dropna().values
+            ax.scatter(vals, np.full(len(vals), i),
+                       color='black', s=8, zorder=5, alpha=0.6, linewidths=0)
+
+    y_labels = [f"$\\bf{{{l}}}$" if i in top_indices else l
+                for i, l in enumerate(plot_df["res_label"])]
+    ax.set_yticks(y_pos)
     ax.set_yticklabels(y_labels, fontsize=14)
     ax.set_xlabel(r'$\Delta \lambda$ Contribution (nm)', fontsize=16)
-    ax.set_ylabel("", fontsize=0)
     ax.set_title(title, fontsize=16, fontweight='bold')
-    
-    # Add zero line
-    ax.axvline(x=0, color='black', linestyle='-', linewidth=1, alpha=0.5)
-    
+    ax.axvline(0, color='black', linewidth=1, alpha=0.5)
     ax.invert_yaxis()
-    
-    # Legend
-    used_classes = plot_df["res_class"].unique()
-    handles = [
-        plt.Line2D([0], [0], color=COLOR_MAP[k], lw=8)
-        for k in used_classes
-    ]
-    legend = ax.legend(handles, used_classes, title="", fontsize=12, loc="lower right")
-    legend.get_frame().set_linewidth(1.5)
-    
-    # Tick params
-    ax.tick_params(axis='x', labelsize=12, width=1.5, length=6)
-    ax.tick_params(axis='y', labelsize=12, width=1.5, length=6)
-    
+
+    handles = [plt.Line2D([0], [0], color=COLOR_MAP[k], lw=8) for k in plot_df["res_class"].unique()]
+    ax.legend(handles, plot_df["res_class"].unique(), fontsize=12, loc="lower right")
+
     plt.tight_layout()
-    outname = f"{fname}_grouped_bar.png"
-    print(f"Saving matplotlib grouped bar as {outname}")
-    plt.savefig(outname, dpi=300, bbox_inches='tight')
+    plt.savefig(f"{fname}_grouped_bar.png", dpi=300, bbox_inches='tight')
     plt.close()
-    
     return plot_df
 
+def colored_mae_frames(df,mae_list,output_path):
+    #make_colorbar
+    mae_structures=[]    
+    #for structure in mae_list:
+    return
 
 if __name__ == "__main__":
     import argparse
@@ -209,7 +148,8 @@ if __name__ == "__main__":
                        help='Path to MAE file for residue mapping (default: ./000001_geopt.01.mae)')
     parser.add_argument('-o', '--output', type=str, default='contributions',
                        help='Output file prefix (default: contributions)')
-    
+    parser.add_argument('-t','--title', type=str,default=None)
+
     args = parser.parse_args()
     
     # Expand glob patterns if any
@@ -221,8 +161,8 @@ if __name__ == "__main__":
             param_folders.append(folder)
     
     print(f"Found {len(param_folders)} parameter folders:")
-    for f in param_folders:
-        print(f"  {f}")
+    #for f in param_folders
+        #print(f"  {f}")
     
     # Read MAE file
     if not os.path.exists(args.mae_path):
@@ -241,13 +181,13 @@ if __name__ == "__main__":
     
     # Plot all residues
     plot_bar_grouped(matrix, f'{args.output}_all_residues', 
-                    title='All Residue Contributions', top_n=10)
+                    title=f'All Residue Contributions {args.title}', top_n=10)
     
     # Plot top 25 by absolute contribution
     top25_indices = matrix['mean'].abs().nlargest(25).index
     matrix_top25 = matrix.loc[top25_indices]
-    plot_bar_grouped(matrix_top25, f'{args.output}_top25_residues', 
-                    title='Top 25 Residue Contributions', top_n=5)
+    plot_bar_grouped(matrix_top25, f'{args.output}_top25_residues_{args.title}', 
+                    title=f'Top 25 Residue Contributions {args.title}', top_n=5)
     
     # Save data
     matrix.reset_index().to_csv(f'{args.output}.csv', index=False)
