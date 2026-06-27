@@ -309,4 +309,4 @@ if __name__ == "__main__":
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
         
-    #shutil.rmtree(r_dir)
+    shutil.rmtree(r_dir)
