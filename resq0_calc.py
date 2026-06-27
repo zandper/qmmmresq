@@ -193,9 +193,9 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         out_path = os.path.join(r_dir, f"{res_num_str}.out")
         
         # Check if summary exists (already completed)
-        print(f"looking for prev at {summary_path}")
+        #print(f"looking for prev at {summary_path}")
         if os.path.exists(summary_path):
-            print(f"[SKIP] {res_num_str} already completed.")
+        #    print(f"[SKIP] {res_num_str} already completed.")
             continue
         
         # Check if output exists but summary doesn't (process it)
@@ -286,9 +286,15 @@ if __name__ == "__main__":
     
     mae_st = structure.StructureReader.read(mae_path)
     qm_asl = utils.qm_connectivity.evaluate_qm_region(mae_st, in_text)
+    if args.screen_asl: 
+        manual_asl=args.screen_asl
+    else:
+        manual_asl=f'protein AND NOT {qm_asl}'
+        print(manual_asl)
+
     molnum_resnum_list = get_nearby_mol_res(mae_st, qm_asl, args.distance, 
                                            protein_only=args.protein_only, 
-                                           manual_asl=args.screen_asl)
+                                           manual_asl=manual_asl)
 
     print(f"evaluating {len(molnum_resnum_list)} residues")
     
@@ -302,4 +308,4 @@ if __name__ == "__main__":
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
         
-    #shutil.rmtree(r_dir)
+    shutil.rmtree(r_dir)

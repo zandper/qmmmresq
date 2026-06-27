@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from schrodinger import structure
 import sys
-
+from scipy import stats
 # Residue classification
 pos_charged = {"ARG", "LYS", "HIS"}
 neg_charged = {"ASP", "GLU", "ASH"}
@@ -83,54 +83,85 @@ def create_frame_contrib_matrix(param_folders, mae_st):
     matrix['n_frames'] = matrix.count(axis=1)
     matrix['min'] = matrix.min(axis=1)
     matrix['max'] = matrix.max(axis=1)
+
+    # Calculate confidence interval
+    ci_level=0.95
+    # CI = mean ± t * (std / sqrt(n))
+    z_score = stats.t.ppf((1 + ci_level) / 2, df=matrix['n_frames'] - 1)
+    matrix['ci_half_width'] = z_score * (matrix['std'] / np.sqrt(matrix['n_frames']))
+    matrix['ci_lower'] = matrix['mean'] - matrix['ci_half_width']
+    matrix['ci_upper'] = matrix['mean'] + matrix['ci_half_width']
     return matrix
 
 
-def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8):
+def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8, x_min=None, x_max=None):
     plot_df = df.reset_index().copy()
     plot_df['res_class'] = plot_df['rescode'].apply(classify_residue)
     plot_df['res_label'] = plot_df['rescode'] + plot_df['resnum'].astype(str)
+    
+    # Define custom order: (+) Charge, (-) Charge, Polar, Nonpolar, Other/Nonprotein
+    class_order = ["(+) Charge", "(-) Charge", "Polar", "Nonpolar", "Other/Nonprotein"]
+    
+    # Convert res_class to categorical with specified order
+    plot_df['res_class'] = pd.Categorical(plot_df['res_class'], categories=class_order, ordered=True)
+    
+    # Sort by res_class (categorical order) then by mean
     plot_df = plot_df.sort_values(by=["res_class", "mean"], ascending=[True, True]).reset_index(drop=True)
+    
     top_indices = plot_df["mean"].abs().nlargest(top_n).index
 
     # Identify frame columns (everything that isn't a summary stat or metadata)
     meta_cols = {'molnum', 'resnum', 'rescode', 'res_class', 'res_label',
                  'mean', 'std', 'n_frames', 'min', 'max'}
     frame_cols = [c for c in plot_df.columns if c not in meta_cols]
-    print('FRAME COLS:',frame_cols)
+    print('FRAME COLS:', frame_cols)
+    
     y_pos = np.arange(len(plot_df))
     fig, ax = plt.subplots(figsize=(12, max(6, len(plot_df) * 0.4)))
 
-    ax.barh(y_pos, plot_df["mean"], color=plot_df["res_class"].map(COLOR_MAP),
+    # Safe color mapping - use .map() which handles missing keys by returning NaN
+    colors = plot_df["res_class"].map(COLOR_MAP)
+    # Replace any NaN colors with a default color (gray)
+    colors = colors.fillna('#95a5a6')
+    
+    ax.barh(y_pos, plot_df["mean"], color=colors,
             edgecolor="black", height=bar_height)
 
     if 'std' in plot_df.columns:
-        ax.errorbar(plot_df["mean"], y_pos, xerr=plot_df["std"],
+        ax.errorbar(plot_df["mean"], y_pos, xerr=plot_df["ci_half_width"],
                     fmt='none', ecolor='black', elinewidth=1.5, capsize=3, capthick=1.5)
 
     # --- Per-frame dots ---
-    if frame_cols:
-        for i, row in plot_df.iterrows():
-            vals = row[frame_cols].dropna().values
-            ax.scatter(vals, np.full(len(vals), i),
-                       color='black', s=8, zorder=5, alpha=0.6, linewidths=0)
+    #if frame_cols:
+    #    for i, row in plot_df.iterrows():
+    #        vals = row[frame_cols].dropna().values
+    #        ax.scatter(vals, np.full(len(vals), i),
+    #                   color='black', s=8, zorder=5, alpha=0.6, linewidths=0)
 
     y_labels = [f"$\\bf{{{l}}}$" if i in top_indices else l
                 for i, l in enumerate(plot_df["res_label"])]
     ax.set_yticks(y_pos)
     ax.set_yticklabels(y_labels, fontsize=14)
-    ax.set_xlabel(r'$\Delta \lambda$ Contribution (nm)', fontsize=16)
+    ax.tick_params(axis='x', labelsize=20)
+    ax.set_xlabel(r'$\lambda_{\max,\ \mathrm{native}} - \lambda_{\max,\ q=0}\ \mathrm{(nm)}$', fontsize=30)
+    if x_min is not None:
+        ax.set_xlim(left=x_min)
+    if x_max is not None:
+        ax.set_xlim(right=x_max)
     ax.set_title(title, fontsize=16, fontweight='bold')
     ax.axvline(0, color='black', linewidth=1, alpha=0.5)
     ax.invert_yaxis()
-
-    handles = [plt.Line2D([0], [0], color=COLOR_MAP[k], lw=8) for k in plot_df["res_class"].unique()]
-    ax.legend(handles, plot_df["res_class"].unique(), fontsize=12, loc="lower right")
+    
+    # Only create legend for classes that actually appear in the data
+    existing_classes = plot_df["res_class"].unique()
+    handles = [plt.Line2D([0], [0], color=COLOR_MAP.get(k, '#95a5a6'), lw=8) for k in existing_classes]
+    ax.legend(handles, existing_classes, fontsize=12)
 
     plt.tight_layout()
     plt.savefig(f"{fname}_grouped_bar.png", dpi=300, bbox_inches='tight')
     plt.close()
     return plot_df
+
 
 def colored_mae_frames(df,mae_list,output_path):
     #make_colorbar
@@ -142,16 +173,17 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Visualize residue contributions from QM/MM calculations')
-    parser.add_argument('-pp', '--param_folders', nargs='+', required=True,
-                       help='Parameter folder(s) containing .txt files (e.g., ./parameters_000001 or ./parameters_*)')
-    parser.add_argument('-m', '--mae_path', type=str, default='./000001_geopt.01.mae',
-                       help='Path to MAE file for residue mapping (default: ./000001_geopt.01.mae)')
-    parser.add_argument('-o', '--output', type=str, default='contributions',
-                       help='Output file prefix (default: contributions)')
+    parser.add_argument('-pp', '--param_folders', nargs='+', required=True,help='Parameter folder(s) containing .txt files (e.g., ./parameters_000001 or ./parameters_*)')
+    parser.add_argument('-o', '--output', type=str, default='contributions',help='Output file prefix (default: contributions)')
     parser.add_argument('-t','--title', type=str,default=None)
-
+    parser.add_argument('--asl',type=str, default=None,help='optionally filter specific residues to plot')
+    parser.add_argument('--xmin', type=float, default=None, help='X-axis minimum value')
+    parser.add_argument('--xmax', type=float, default=None, help='X-axis maximum value')
+    
     args = parser.parse_args()
     
+    
+
     # Expand glob patterns if any
     param_folders = []
     for folder in args.param_folders:
@@ -159,35 +191,44 @@ if __name__ == "__main__":
             param_folders.extend(sorted(glob.glob(folder)))
         else:
             param_folders.append(folder)
-    
+    print(os.path.dirname(param_folders[0]))
+    mae_path = glob.glob(os.path.join(os.path.dirname(param_folders[0]), "*.mae"))[0]
+
     print(f"Found {len(param_folders)} parameter folders:")
     #for f in param_folders
         #print(f"  {f}")
     
     # Read MAE file
-    if not os.path.exists(args.mae_path):
-        print(f"Warning: MAE file not found: {args.mae_path}")
+    if not os.path.exists(mae_path):
+        print(f"Warning: MAE file not found: {mae_path}")
         print("Residue codes will be 'UNK'")
         mae_st = None
     else:
-        mae_st = structure.StructureReader.read(args.mae_path)
+        mae_st = structure.StructureReader.read(mae_path)
     
     # Create matrix
     matrix = create_frame_contrib_matrix(param_folders, mae_st)
+    if args.asl:
+        from schrodinger.structutils import analyze
+        asl_atoms = analyze.evaluate_asl(mae_st, args.asl)
+        valid_residues = {(mae_st.atom[i].molecule_number, mae_st.atom[i].resnum) for i in asl_atoms}
+        matrix = matrix[matrix.index.droplevel('rescode').isin(valid_residues)]
     
     if matrix.empty:
         print("No data found!")
         sys.exit(1)
-    
-    # Plot all residues
+
+    # Plot all residues with x limits
     plot_bar_grouped(matrix, f'{args.output}_all_residues', 
-                    title=f'All Residue Contributions {args.title}', top_n=10)
+                    title=f'All Residue Contributions {args.title}', 
+                    top_n=0, x_min=args.xmin, x_max=args.xmax)
     
-    # Plot top 25 by absolute contribution
+    # Plot top 25 with x limits
     top25_indices = matrix['mean'].abs().nlargest(25).index
     matrix_top25 = matrix.loc[top25_indices]
     plot_bar_grouped(matrix_top25, f'{args.output}_top25_residues_{args.title}', 
-                    title=f'Top 25 Residue Contributions {args.title}', top_n=5)
+                    title=f'Top 25 Residue Contributions {args.title}', 
+                    top_n=0, x_min=args.xmin, x_max=args.xmax)
     
     # Save data
     matrix.reset_index().to_csv(f'{args.output}.csv', index=False)

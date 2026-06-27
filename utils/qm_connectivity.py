@@ -38,30 +38,39 @@ def qm_connectivity(st, hcapqm_atoms, hcapmm_atoms):
     return sorted(visited)
 
 def evaluate_qm_region(st, in_text):
-    hcaps = find_hcaps(in_text)
-    if hcaps is None:
-        return None
     
-    hcapqm_atoms, hcapmm_atoms = hcaps
-    qm_atoms = qm_connectivity(st, hcapqm_atoms, hcapmm_atoms)
-    
-    # Build set of unique (chain, residue_number) pairs
-    residue_info = set()
-    for atom_idx in qm_atoms:
-        atom = st.atom[atom_idx]
-        resnum = atom.resnum
-        chain = atom.chain
-        residue_info.add((chain, resnum))
-    # Build ASL
-    asl_parts = [f'(chain.name "{chain}" AND res.num {resnum})' for chain, resnum in sorted(residue_info)]
-    qm_residue_asl = ' OR '.join(asl_parts)
+    block = re.search(r'&qmregion(.*?)&', in_text, re.DOTALL).group(1)
+    molid = re.search(r'molid\s+(\d+)', block, re.IGNORECASE)
+    if molid:
+        number = int(molid.group(1))  # gives you 2
+        qm_residue_asl = f'mol.num {number}'
+    else:
+        hcaps = find_hcaps(in_text)
+        if hcaps is None:
+            return None
+        
+        hcapqm_atoms, hcapmm_atoms = hcaps
+        qm_atoms = qm_connectivity(st, hcapqm_atoms, hcapmm_atoms)
+        
+        # Build set of unique (chain, residue_number) pairs
+        residue_info = set()
+        for atom_idx in qm_atoms:
+            atom = st.atom[atom_idx]
+            resnum = atom.resnum
+            chain = atom.chain
+            residue_info.add((chain, resnum))
+        # Build ASL
+        asl_parts = [f'(chain.name "{chain}" AND res.num {resnum})' for chain, resnum in sorted(residue_info)]
+        qm_residue_asl = ' OR '.join(asl_parts)
     return qm_residue_asl
 
 if __name__ =="__main__":
-    in_path = './000001_spe.in'
+    import sys
+    in_path = sys.argv[1]
     #textscrape.add_mae_charges_yes(in_path)
     with open(in_path) as f:
         in_text = f.read()
     mae_path = (re.findall(r"MAEFILE:\s*(\S+)", in_text))[0]
     mae_st = structure.StructureReader.read(mae_path)
     qasl=evaluate_qm_region(mae_st,in_text)
+    print('qm_as: ',qasl)
