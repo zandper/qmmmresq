@@ -245,6 +245,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         for molnum, resnum in molnum_resnum_list:
             res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
             out_path = os.path.join(r_dir, f"{res_num_str}.out")
+            
             if process_result(out_path, molnum, resnum, p_dir, native_lambda):
                 # Remove related items in r_dir if successful
                 base = out_path.rsplit('.', 1)[0]
@@ -278,7 +279,7 @@ if __name__ == "__main__":
         in_text = f.read()
     
     native_out_path = in_path.replace(".in", ".out")
-    native_lambda = utils.textscrape.extract_first_wavelength(native_out_path)
+    native_lambda = float(utils.textscrape.extract_first_wavelength(native_out_path))
     print(f"Native lambda: {native_lambda}")
 
     mae_path = (re.findall(r"MAEFILE:\s*(\S+)", in_text))[0]
@@ -308,4 +309,4 @@ if __name__ == "__main__":
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
         
-    shutil.rmtree(r_dir)
+    #shutil.rmtree(r_dir)
