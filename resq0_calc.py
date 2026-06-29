@@ -178,6 +178,8 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
     
     # Prepare all jobs
     in_files = []
+    skipped=0
+    todo=0
     for molnum, resnum in molnum_resnum_list:
         res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
         summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
@@ -185,6 +187,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         
         if os.path.exists(summary_path):
             print(f"[SKIP] {res_num_str} already completed.")
+            skipped+=1
             continue
         
         # Check if output exists but summary doesn't (process it)
@@ -195,6 +198,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                     if "completed on" in text.lower():
                         print(f"[PROCESS] Valid output exists for {res_num_str}, processing...")
                         process_result(out_path, molnum, resnum, p_dir, native_lambda)
+                        skipped+=1
                         continue
                     else:
                         print(f"[WARNING] Output exists but incomplete for {res_num_str}, will rerun...")
@@ -207,11 +211,16 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         # Prepare new input files
         res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
         in_files.append(f"{res_num_str}.in")
+        todo+=1
 
-    
+    print(f'Calc Total: {len(molnum_resnum_list)}')
+    print(f'Calc Complete: {(skipped)}')
+    print(f'Calc To Run: {(todo)}')
+
     if not in_files:
         print("No jobs to run!")
         return
+    
     
     # Run jaguar on all input files
     print(f"Calculating SPE for {len(in_files)} residues")
