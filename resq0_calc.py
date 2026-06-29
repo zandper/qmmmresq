@@ -67,41 +67,36 @@ def prepare_residue_files(molnum, resnum, mae_path, in_path, target_dir):
     res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
     mae_copy_path = os.path.join(target_dir, f"{res_num_str}.mae")
     in_copy_path = os.path.join(target_dir, f"{res_num_str}.in")
+    # Load structure fresh
+    mae_st = structure.StructureReader.read(mae_path)
     
-    try:
-        # Load structure fresh
-        mae_st = structure.StructureReader.read(mae_path)
-        
-        # Select target residue
-        target_mol = next(m for m in mae_st.molecule if m.number == molnum)
-        target_res = next(r for r in target_mol.residue if r.resnum == resnum)
-        
-        # Neutralize sidechain
-        sidechain_ASL = f"{target_res.getAsl()} AND NOT ( backbone )"
-        atom_indices = analyze.evaluate_asl(mae_st, sidechain_ASL)
-        
-        for i in atom_indices:
-            atom = mae_st.atom[i]
-            atom.partial_charge = 0 #Set sidechain charges to zero
-            atom.solvation_charge = 0 #Set sidechain charges to zero
-            atom.color = (0, 255, 0) #Color target sidechain for debugging
-        
-        # Prepare input files
-        with open(in_path, 'r') as f:
-            in_content = f.read()
-        in_content = re.sub(r'MAEFILE:\s*\S+', f'MAEFILE: {res_num_str}.mae', in_content)
-        
-        with open(in_copy_path, 'w') as f:
-            f.write(in_content)
-        
-        with structure.StructureWriter(mae_copy_path) as writer:
-            writer.append(mae_st)
-        
-        return (res_num_str, in_copy_path)
-        
-    except Exception as e:
-        print(f"Failed to prepare {res_num_str}: {e}")
-        return None
+    # Select target residue
+    target_mol = next(m for m in mae_st.molecule if m.number == molnum)
+    target_res = next(r for r in target_mol.residue if r.resnum == resnum)
+    
+    # Neutralize sidechain
+    sidechain_ASL = f"{target_res.getAsl()} AND NOT ( backbone )"
+    atom_indices = analyze.evaluate_asl(mae_st, sidechain_ASL)
+    
+    for i in atom_indices:
+        atom = mae_st.atom[i]
+        atom.partial_charge = 0 #Set sidechain charges to zero
+        atom.solvation_charge = 0 #Set sidechain charges to zero
+        atom.color = (0, 255, 0) #Color target sidechain for debugging
+    
+    # Prepare input files
+    with open(in_path, 'r') as f:
+        in_content = f.read()
+    in_content = re.sub(r'MAEFILE:\s*\S+', f'MAEFILE: {res_num_str}.mae', in_content)
+    
+    with open(in_copy_path, 'w') as f:
+        f.write(in_content)
+    
+    with structure.StructureWriter(mae_copy_path) as writer:
+        writer.append(mae_st)
+    
+    return res_num_str, in_copy_path
+
 
 
 def process_result(out_path, molnum, resnum, p_dir, native_lambda):
@@ -125,7 +120,7 @@ def process_result(out_path, molnum, resnum, p_dir, native_lambda):
         print(f"Failed to process {res_num_str}: {e}")
         return False
 
-
+# --PYTHON PARRALLELISMS
 def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, max_retries=3):
     """Calculate single point residue contribution using QSite directly."""
     res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
@@ -141,11 +136,7 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
         
         try:
             # Prepare files
-            prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
-            if not prepared:
-                raise Exception("Failed to prepare files")
-            
-            res_num_str, in_copy_path = prepared
+            res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
             out_path = in_copy_path.replace(".in", ".out")
             
             # Run QSite
@@ -170,7 +161,6 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
                 print(f"removing{r_dir}")
                 #shutil.rmtree(r_dir, ignore_errors=True)
 
-
 def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
     """Process all residues using Python multiprocessing."""
     args = [(molnum, resnum, mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda) 
@@ -181,6 +171,7 @@ def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, 
         pool.starmap(calc_single_point_residue, args)
 
 
+# --JAGUAR PARALLELISMS
 def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, molnum_resnum_list):
     """Run calculations using Jaguar's parallel mode."""
     print("Preparing input files for all residues...")
@@ -192,15 +183,12 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         summary_path = os.path.join(p_dir, f"{res_num_str}.txt")
         out_path = os.path.join(r_dir, f"{res_num_str}.out")
         
-        # Check if summary exists (already completed)
-        #print(f"looking for prev at {summary_path}")
         if os.path.exists(summary_path):
-        #    print(f"[SKIP] {res_num_str} already completed.")
+            print(f"[SKIP] {res_num_str} already completed.")
             continue
         
         # Check if output exists but summary doesn't (process it)
         if os.path.exists(out_path):
-            # Check if output is valid before processing
             try:
                 with open(out_path) as f:
                     text = f.read()
@@ -210,17 +198,16 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                         continue
                     else:
                         print(f"[WARNING] Output exists but incomplete for {res_num_str}, will rerun...")
-                        #os.remove(out_path)  # Remove invalid output
+                        os.remove(out_path)  # Remove invalid output
+
             except Exception:
                 print(f"[WARNING] Could not read output for {res_num_str}, will rerun...")
-                #os.remove(out_path)
+                os.remove(out_path)
         
         # Prepare new input files
-        prepared = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
-        if prepared:
-            res_num_str, in_copy_path = prepared
-            in_files.append(f"{res_num_str}.in")
-            print(f"Prepared {res_num_str}")
+        res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
+        in_files.append(f"{res_num_str}.in")
+
     
     if not in_files:
         print("No jobs to run!")
@@ -243,6 +230,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
         
         # Process results for all residues (process_result will skip if summary exists)
         for molnum, resnum in molnum_resnum_list:
+            
             res_num_str = f"{str(molnum).zfill(6)}_{str(resnum).zfill(6)}"
             out_path = os.path.join(r_dir, f"{res_num_str}.out")
             
@@ -251,7 +239,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                 base = out_path.rsplit('.', 1)[0]
                 print(f"Successfully processed {res_num_str}, removing {base}.*")
                 for file_path in glob.glob(f"{base}.*"):
-                    #os.remove(file_path)
+                    os.remove(file_path)
                     print(f"  Removed {file_path}")
             else:
                 print(f"Failed to process {res_num_str}, keeping files for debugging")
@@ -309,4 +297,4 @@ if __name__ == "__main__":
     else:
         calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, args.num_processes, native_lambda, molnum_resnum_list)
         
-    shutil.rmtree(r_dir)
+    #shutil.rmtree(r_dir)
