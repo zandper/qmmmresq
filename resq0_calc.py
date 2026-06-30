@@ -150,15 +150,21 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             
             # Process result
             if process_result(out_path, molnum, resnum, p_dir, native_lambda):
-                #shutil.rmtree(res_dir)
-                return
-            
+                # Remove related items in r_dir if successful
+                base = out_path.rsplit('.', 1)[0]
+                print(f"Successfully processed {res_num_str}, removing {base}.*")
+                for file_path in glob.glob(f"{base}*"):
+                    os.remove(file_path)
+                    print(f"  Removed {file_path}")
+            else:
+                print(f"Failed to process {res_num_str}, keeping files for debugging")
+
         except Exception as e:
             print(f"Attempt {attempt} failed: {e}")
             if attempt == max_retries:
                 print(f"Giving up on {res_num_str}")
             else:
-                print(f"removing{r_dir}")
+                print(f"NOT removing{r_dir}")
                 #shutil.rmtree(r_dir, ignore_errors=True)
 
 def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
@@ -260,7 +266,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process MAE and input files")
     parser.add_argument('-i', '--in_path', type=str, required=True, help='Path to .in file')
-    parser.add_argument('-c', '--num_cpus', type=int, default=16, help='Number of CPU processors to use per process')
+    parser.add_argument('-c', '--num_cpus', type=int, default=1, help='Number of CPU processors to use per process')
     parser.add_argument('-p', '--num_processes', type=int, default=4, help='Number of concurrent processes to spawn (default: 4)')
     parser.add_argument('-d','--distance',type=float, default=None,help='Limit range from QM region')
     parser.add_argument('--protein_only',action='store_true',help='Only include protein residues (excludes everything else)')
