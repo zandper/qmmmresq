@@ -138,16 +138,22 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             # Prepare files
             res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
             out_path = in_copy_path.replace(".in", ".out")
-            
+            scratch_dir = os.path.abspath(os.path.join(r_dir, res_num_str))
             # Run QSite
-            cmd = ['qsite','-NOJOBID', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
+            cmd = ['qsite','-NOJOBID', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path),'-scr',scratch_dir]
             print(f"Running in {r_dir}: {' '.join(cmd)}")
-            p = subprocess.Popen(cmd, cwd=r_dir)
+            p = subprocess.Popen(
+                cmd,
+                cwd=r_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True          # returns stderr as string, not bytes
+            )
             _, err = p.communicate()   # replaces p.wait() and captures stderr
 
             if p.returncode != 0:
-                raise Exception(f"QSite failed with return code {err.decode()}")
-            
+                raise Exception(f"QSite failed with return code {err}")
+
             # Process result
             if process_result(out_path, molnum, resnum, p_dir, native_lambda):
                 # Remove related items in r_dir if successful
@@ -156,6 +162,8 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
                 for file_path in glob.glob(f"{base}*"):
                     os.remove(file_path)
                     print(f"  Removed {file_path}")
+                    shutil.rmtree(scratch_dir, ignore_errors=True)
+                    return
             else:
                 print(f"Failed to process {res_num_str}, keeping files for debugging")
 
@@ -163,9 +171,9 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             print(f"Attempt {attempt} failed: {e}")
             if attempt == max_retries:
                 print(f"Giving up on {res_num_str}")
-            else:
-                print(f"NOT removing{r_dir}")
-                #shutil.rmtree(r_dir, ignore_errors=True)
+
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
 
 def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
     """Process all residues using Python multiprocessing."""
