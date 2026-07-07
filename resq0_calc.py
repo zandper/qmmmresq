@@ -140,13 +140,15 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             out_path = in_copy_path.replace(".in", ".out")
             
             # Run QSite
-            cmd = ['qsite', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
+            cmd = ['qsite','-NOJOBID', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
             print(f"Running in {r_dir}: {' '.join(cmd)}")
             p = subprocess.Popen(cmd, cwd=r_dir)
             p.wait()
             
+            _, err = p.communicate()   # replaces p.wait() and captures stderr
+
             if p.returncode != 0:
-                raise Exception(f"QSite failed with return code {p.returncode}")
+                raise Exception(f"QSite failed with return code {err.decode()}")
             
             # Process result
             if process_result(out_path, molnum, resnum, p_dir, native_lambda):
@@ -293,9 +295,9 @@ if __name__ == "__main__":
     if args.screen_asl: 
         manual_asl=args.screen_asl
     else:
-        manual_asl=f'protein AND NOT {qm_asl}'
-        print(manual_asl)
-
+        manual_asl=f'(protein) AND NOT ({qm_asl})'
+        print(f'ASL: {manual_asl}')
+        print(f'QMASL:"{qm_asl}')
     molnum_resnum_list = get_nearby_mol_res(mae_st, qm_asl, args.distance, 
                                            protein_only=args.protein_only, 
                                            manual_asl=manual_asl)
