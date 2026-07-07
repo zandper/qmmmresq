@@ -143,8 +143,6 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             cmd = ['qsite','-NOJOBID', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path)]
             print(f"Running in {r_dir}: {' '.join(cmd)}")
             p = subprocess.Popen(cmd, cwd=r_dir)
-            p.wait()
-            
             _, err = p.communicate()   # replaces p.wait() and captures stderr
 
             if p.returncode != 0:
