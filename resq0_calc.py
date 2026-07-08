@@ -309,7 +309,7 @@ if __name__ == "__main__":
     native_out_path = in_path.replace(".in", ".out")
     native_lambda = float(utils.textscrape.extract_first_wavelength(native_out_path))
     print(f"Native lambda: {native_lambda}")
-
+    print(in_text)
     mae_path = (re.findall(r"MAEFILE:\s*(\S+)", in_text))[0]
     spe_base = os.path.basename(in_path.rstrip('.in'))
     
