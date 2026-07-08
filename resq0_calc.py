@@ -129,50 +129,66 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
     if os.path.exists(summary_path):
         print(f"[SKIP] {res_num_str} already completed.")
         return
-    
+
     for attempt in range(1, max_retries + 1):
         print(f"calculating {res_num_str} (attempt {attempt}/{max_retries})")
 
-        
+        scratch_dir = None
+        success = False
+
         try:
             # Prepare files
             res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
             out_path = in_copy_path.replace(".in", ".out")
             scratch_dir = os.path.abspath(os.path.join(r_dir, res_num_str))
+
             # Run QSite
-            cmd = ['qsite','-NOJOBID', '-WAIT', '-HOST', 'localhost', '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path),'-scr',scratch_dir]
+            cmd = ['qsite', '-NOJOBID', '-WAIT', '-HOST', 'localhost',
+                   '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path), '-scr', scratch_dir]
             print(f"Running in {r_dir}: {' '.join(cmd)}")
+            
             p = subprocess.Popen(
                 cmd,
                 cwd=r_dir,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
-                text=True          # returns stderr as string, not bytes
+                text=True
             )
-            _, err = p.communicate()   # replaces p.wait() and captures stderr
+            _, err = p.communicate()
 
             if p.returncode != 0:
-                raise Exception(f"QSite failed with return code {err}")
+                raise RuntimeError(f"QSite failed with return code {p.returncode}\n{err}")
 
             # Process result
             if process_result(out_path, molnum, resnum, p_dir, native_lambda):
-                # Remove related items in r_dir if successful
+                success = True
+                # Remove all related files and scratch only on success
                 base = out_path.rsplit('.', 1)[0]
                 print(f"Successfully processed {res_num_str}, removing {base}.*")
-                for file_path in glob.glob(f"{base}*"):
+                for file_path in glob.glob(f"{base}.*"):
                     os.remove(file_path)
                     print(f"  Removed {file_path}")
-                    shutil.rmtree(scratch_dir, ignore_errors=True)
-                    return
+                shutil.rmtree(scratch_dir, ignore_errors=True)
+                return
             else:
-                print(f"Failed to process {res_num_str}, keeping files for debugging")
+                # process_result returned False (non-exceptional failure)
+                print(f"process_result failed for {res_num_str}, keeping files for debugging")
+                shutil.rmtree(scratch_dir, ignore_errors=True)
 
         except Exception as e:
             print(f"Attempt {attempt} failed: {e}")
+            # On exception, we do not delete scratch or files – keep for debugging
             if attempt == max_retries:
                 print(f"Giving up on {res_num_str}")
+                
+            # Continue to next retry
 
-        shutil.rmtree(scratch_dir, ignore_errors=True)
+        # If we reach here, the attempt did not succeed.
+        # On the last attempt, we can optionally clean up scratch to avoid clutter,
+        # but we choose to leave it for debugging.
+        # Uncomment the following if you want to clean scratch on final failure:
+        if attempt == max_retries and scratch_dir and os.path.exists(scratch_dir):
+             shutil.rmtree(scratch_dir, ignore_errors=True)
 
 
 def process_all_residues(mae_path, r_dir, in_path, p_dir, num_processes, n_cpu, native_lambda, molnum_resnum_list):
