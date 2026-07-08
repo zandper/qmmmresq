@@ -141,7 +141,8 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
             res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
             out_path = in_copy_path.replace(".in", ".out")
             scratch_dir = os.path.abspath(os.path.join(r_dir, res_num_str))
-            shutil.rmtree(scratch_dir, ignore_errors=True)
+            if os.path.exists(scratch_dir):
+                shutil.rmtree(scratch_dir, ignore_errors=True)
             # Run QSite
             cmd = ['qsite', '-NOJOBID', '-WAIT', '-HOST', 'localhost',
                    '-PARALLEL', str(int(n_cpu)), os.path.basename(in_copy_path), '-scr', scratch_dir]
