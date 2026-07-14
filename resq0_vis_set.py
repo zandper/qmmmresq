@@ -11,6 +11,8 @@ import numpy as np
 from schrodinger import structure
 import sys
 from scipy import stats
+import utils.textscrape
+
 # Residue classification
 pos_charged = {"ARG", "LYS", "HIS"}
 neg_charged = {"ASP", "GLU", "ASH"}
@@ -39,9 +41,16 @@ COLOR_MAP = {
     "Other/Nonprotein": "#95a5a6" # grayish soft
 }
 
+
+
 def create_frame_contrib_matrix(param_folders, mae_st):
-    """Create matrix of contributions with residue codes."""
+    """
+    Create matrix of residue contributions and also collect native lambda per frame.
     
+    Returns:
+        matrix (pd.DataFrame): Pivot table with frames as columns and summary stats.
+        lambda_dict (dict): Mapping from frame number (string) to wavelength (float).
+    """
     # Build mapping from (molnum, resnum) to rescode
     rescode_map = {}
     for residue in mae_st.residue:
@@ -49,10 +58,28 @@ def create_frame_contrib_matrix(param_folders, mae_st):
         rescode_map[key] = residue.pdbres.strip()
     
     rows = []
+    lambda_dict = {}   # frame -> wavelength in nm
+    
     for folder in param_folders:
         parts = os.path.basename(folder).split('_')
-        frame_num = parts[1]
+        frame_num = parts[1]   # e.g. '000001'
         
+        # --- Extract native lambda from BASE_spe.out ---
+        base = frame_num
+        out_path = os.path.join(os.path.dirname(folder), f"{base}_spe.out")
+        print(out_path)
+        if os.path.isfile(out_path):
+            try:
+                wavelength = float(utils.textscrape.extract_first_wavelength(out_path))
+                lambda_dict[base] = wavelength
+            except Exception as e:
+                print(f"Warning: Could not parse wavelength from {out_path}: {e}")
+                lambda_dict[base] = None
+        else:
+            print(f"Warning: {out_path} not found, lambda set to None")
+            lambda_dict[base] = None
+        
+        # --- Read contribution .txt files ---
         for txt_file in glob.glob(os.path.join(folder, "*.txt")):
             with open(txt_file) as f:
                 for line in f:
@@ -65,11 +92,11 @@ def create_frame_contrib_matrix(param_folders, mae_st):
                             'resnum': resnum,
                             'rescode': rescode_map.get((molnum, resnum), 'UNK'),
                             'frame': frame_num,
-                            'contrib': float(parts_line[-2])#*-1 #REMOVE THIS LATER
+                            'contrib': float(parts_line[-2])  # adjust sign if needed
                         })
     
     if not rows:
-        return pd.DataFrame()
+        return pd.DataFrame(), lambda_dict
     
     df = pd.DataFrame(rows)
     
@@ -77,21 +104,21 @@ def create_frame_contrib_matrix(param_folders, mae_st):
     matrix = df.pivot(index=['molnum', 'resnum', 'rescode'], columns='frame', values='contrib')
     matrix.columns.name = 'frame'
     
-    # Calculate mean and std across frames
+    # Summary statistics
     matrix['mean'] = matrix.mean(axis=1)
     matrix['std'] = matrix.std(axis=1)
     matrix['n_frames'] = matrix.count(axis=1)
     matrix['min'] = matrix.min(axis=1)
     matrix['max'] = matrix.max(axis=1)
-
-    # Calculate confidence interval
-    ci_level=0.95
-    # CI = mean ± t * (std / sqrt(n))
+    
+    # Confidence interval
+    ci_level = 0.95
     z_score = stats.t.ppf((1 + ci_level) / 2, df=matrix['n_frames'] - 1)
     matrix['ci_half_width'] = z_score * (matrix['std'] / np.sqrt(matrix['n_frames']))
     matrix['ci_lower'] = matrix['mean'] - matrix['ci_half_width']
     matrix['ci_upper'] = matrix['mean'] + matrix['ci_half_width']
-    return matrix
+    
+    return matrix, lambda_dict
 
 
 def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8, x_min=None, x_max=None):
@@ -162,12 +189,71 @@ def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8, x_min=None, 
     plt.close()
     return plot_df
 
+def color_mae_by_mean(matrix, mae_path, out_prefix):
+    """
+    Load MAE file and colour residues by the mean contribution (matrix['mean']).
+    Saves coloured.mae and colorbar.png.
+    """
+    import math
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from schrodinger import structure
 
-def colored_mae_frames(df,mae_list,output_path):
-    #make_colorbar
-    mae_structures=[]    
-    #for structure in mae_list:
-    return
+    # Extract mean values (index: molnum, resnum, rescode)
+    mean_series = matrix['mean'].dropna()
+    df = mean_series.reset_index()
+    df.columns = ['molnum', 'resnum', 'rescode', 'value']
+    df['molnum'] = df['molnum'].astype(int)
+    df['resnum'] = df['resnum'].astype(int)
+
+    # Load structure
+    st = next(structure.StructureReader(mae_path))
+
+    # Colour limits
+    max_abs = math.ceil(df['value'].abs().max()) or 1.0
+    norm = mcolors.Normalize(vmin=-max_abs, vmax=max_abs, clip=True)
+    cmap = cm.get_cmap("bwr")
+
+    colored_residues = 0
+    colored_atoms = 0
+
+    for _, row in df.iterrows():
+        molnum = row['molnum']
+        resnum = row['resnum']
+        val = row['value']
+
+        # Find residue
+        res_obj = next(
+            (r for r in st.residue
+             if r.molecule_number == molnum and int(str(r.resnum).strip()) == resnum),
+            None
+        )
+        if res_obj is None:
+            continue
+
+        r, g, b, _ = cmap(norm(val))
+        rgb = (int(r*255), int(g*255), int(b*255))
+        for atom in res_obj.atom:
+            atom.color = rgb
+        colored_residues += 1
+        colored_atoms += len(res_obj.atom)
+
+    out_mae = f"{out_prefix}_colored_by_mean.mae"
+    st.write(out_mae)
+    print(f"Coloured {colored_residues} residues ({colored_atoms} atoms) → {out_mae}")
+
+    # Colour bar
+    fig, ax = plt.subplots(figsize=(6, 0.5))
+    fig.subplots_adjust(bottom=0.5)
+    cb = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap),
+                      cax=ax, orientation='horizontal')
+    cb.set_label(r'$\langle \lambda_{\mathrm{native}} - \lambda_{\mathrm{res}} \rangle$ (nm)', fontsize=15)
+    cb.ax.tick_params(labelsize=12)
+    cb_path = f"{out_prefix}_colorbar_mean.png"
+    plt.savefig(cb_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Colour bar saved → {cb_path}")
 
 if __name__ == "__main__":
     import argparse
@@ -182,7 +268,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    
+     
 
     # Expand glob patterns if any
     param_folders = []
@@ -207,7 +293,7 @@ if __name__ == "__main__":
         mae_st = structure.StructureReader.read(mae_path)
     
     # Create matrix
-    matrix = create_frame_contrib_matrix(param_folders, mae_st)
+    matrix, lambda_dict = create_frame_contrib_matrix(param_folders, mae_st)
     if args.asl:
         from schrodinger.structutils import analyze
         asl_atoms = analyze.evaluate_asl(mae_st, args.asl)
@@ -234,3 +320,18 @@ if __name__ == "__main__":
     matrix.reset_index().to_csv(f'{args.output}.csv', index=False)
     print(f"Processed {len(matrix)} residues")
     print(f"Saved: {args.output}.csv")
+    #print(lambda_dict)
+
+    average_lambda = np.mean(list(lambda_dict.values()))
+    best_frame_base = min(lambda_dict, key=lambda f: abs(lambda_dict[f] - average_lambda))
+
+    mae_path = os.path.join(os.path.dirname(param_folders[0]), f"{best_frame_base}_geopt.01.mae")
+
+    if os.path.exists(mae_path):
+        color_mae_by_mean(matrix, mae_path, args.output)
+    else:
+        print(f"Warning: {mae_path} not found – skipping colouring.")
+
+    # take lambda value cloest to average
+    # use geopt structure
+    # color each residue by electrostatic interaction logscale (pymol)   

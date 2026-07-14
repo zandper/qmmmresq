@@ -46,12 +46,13 @@ def get_nearby_mol_res(mae_st, qm_asl, cutoff_angstrom=None, manual_asl=None, pr
         raise ValueError("Either cutoff_angstrom or manual_asl must be provided")
     
     if protein_only:
-        solvent_atoms = set(analyze.evaluate_asl(mae_st, "solvent"))
-        membrane_atoms = set(analyze.evaluate_asl(mae_st, "membrane"))
-        salt_atoms = set(analyze.evaluate_asl(mae_st, '(ions) AND ((chain.name " "))'))
-        nearby_atoms -= solvent_atoms
-        nearby_atoms -= membrane_atoms
-        nearby_atoms -= salt_atoms
+        nearby_atoms = set(analyze.evaluate_asl(mae_st,"(chain.name A)"))
+        #solvent_atoms = set(analyze.evaluate_asl(mae_st, "solvent"))
+        #membrane_atoms = set(analyze.evaluate_asl(mae_st, "membrane"))
+        #salt_atoms = set(analyze.evaluate_asl(mae_st, '(ions) AND ((chain.name " "))'))
+        #nearby_atoms -= solvent_atoms
+        #nearby_atoms -= membrane_atoms
+        #nearby_atoms -= salt_atoms
 
     return sorted({
         (mae_st.atom[i].molecule_number, mae_st.atom[i].resnum)
@@ -318,7 +319,7 @@ if __name__ == "__main__":
     if args.screen_asl: 
         manual_asl=args.screen_asl
     else:
-        manual_asl=f'(protein) AND NOT ({qm_asl})'
+        manual_asl=f'(chain.name A) AND NOT ({qm_asl})'
         print(f'ASL: {manual_asl}')
         print(f'QMASL:"{qm_asl}')
     molnum_resnum_list = get_nearby_mol_res(mae_st, qm_asl, args.distance, 
