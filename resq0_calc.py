@@ -322,8 +322,9 @@ if __name__ == "__main__":
         manual_asl=f'(chain.name A) AND NOT ({qm_asl})'
         print(f'ASL: {manual_asl}')
         print(f'QMASL:"{qm_asl}')
+
     molnum_resnum_list = get_nearby_mol_res(mae_st, qm_asl, args.distance, 
-                                           protein_only=args.protein_only, 
+                                           protein_only=None, 
                                            manual_asl=manual_asl)
 
     print(f"evaluating {len(molnum_resnum_list)} residues")

@@ -16,7 +16,7 @@ import utils.textscrape
 # Residue classification
 pos_charged = {"ARG", "LYS", "HIS"}
 neg_charged = {"ASP", "GLU", "ASH"}
-polar = {"SER", "THR", "ASN", "GLN", "TYR", "CYS"}
+polar = {"SER", "THR", "ASN", "GLN", "TYR", "CYS","GLH"}
 nonpolar = {"ALA", "VAL", "LEU", "ILE", "MET", "PRO", "PHE", "TRP", "GLY"}
 
 def classify_residue(rescode):
