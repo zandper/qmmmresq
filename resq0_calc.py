@@ -168,7 +168,7 @@ def calc_single_point_residue(molnum, resnum, mae_path, r_dir, in_path, p_dir, n
                 base = out_path.rsplit('.', 1)[0]
                 print(f"Successfully processed {res_num_str}, removing {base}.*")
                 for file_path in glob.glob(f"{base}.*"):
-                    os.remove(file_path)
+                    #os.remove(file_path)
                     print(f"  Removed {file_path}")
                 shutil.rmtree(scratch_dir, ignore_errors=True)
                 return
@@ -234,11 +234,11 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                         continue
                     else:
                         print(f"[WARNING] Output exists but incomplete for {res_num_str}, will rerun...")
-                        os.remove(out_path)  # Remove invalid output
+                        #os.remove(out_path)  # Remove invalid output
 
             except Exception:
                 print(f"[WARNING] Could not read output for {res_num_str}, will rerun...")
-                os.remove(out_path)
+                #os.remove(out_path)
         
         # Prepare new input files
         res_num_str, in_copy_path = prepare_residue_files(molnum, resnum, mae_path, in_path, r_dir)
@@ -280,7 +280,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                 base = out_path.rsplit('.', 1)[0]
                 print(f"Successfully processed {res_num_str}, removing {base}.*")
                 for file_path in glob.glob(f"{base}.*"):
-                    os.remove(file_path)
+                    #os.remove(file_path)
                     print(f"  Removed {file_path}")
             else:
                 print(f"Failed to process {res_num_str}, keeping files for debugging")

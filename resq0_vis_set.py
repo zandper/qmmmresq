@@ -12,7 +12,7 @@ from schrodinger import structure
 import sys
 from scipy import stats
 import utils.textscrape
-
+import re
 # Residue classification
 pos_charged = {"ARG", "LYS", "HIS"}
 neg_charged = {"ASP", "GLU", "ASH"}
@@ -21,6 +21,9 @@ nonpolar = {"ALA", "VAL", "LEU", "ILE", "MET", "PRO", "PHE", "TRP", "GLY"}
 
 def classify_residue(rescode):
     rescode = str(rescode).upper()
+    rescode = str(rescode).strip().upper()
+    # Step 2: Remove everything except letters and numbers
+    rescode = re.sub(r'[^A-Z0-9]', '', rescode) 
     if rescode in pos_charged:
         return "(+) Charge"
     elif rescode in neg_charged:
@@ -29,16 +32,23 @@ def classify_residue(rescode):
         return "Polar"
     elif rescode in nonpolar:
         return "Nonpolar"
+    elif rescode == "MG":
+        return "Magnesium"
     else:
-        return "Other/Nonprotein"
+        print("OTHER FOUND")
+        print(rescode)
+        return "Other"
+
+
 
 # Color map (matching your style)
 COLOR_MAP = {
-    "(+) Charge": "#4a90e2",      # muted blue
-    "(-) Charge": "#d64541",      # soft red
+    "(+) Charge": "#56c7e4",      # muted cyan
+    "(-) Charge": "#eb6250",      # soft red
     "Polar": "#9b59b6",           # muted purple
     "Nonpolar": "#f1c40f",        # softer yellow
-    "Other/Nonprotein": "#95a5a6" # grayish soft
+    "Magnesium": "#84ac57",       # Lime        
+    "Other": "#95a5a6" # grayish soft
 }
 
 
@@ -123,11 +133,12 @@ def create_frame_contrib_matrix(param_folders, mae_st):
 
 def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8, x_min=None, x_max=None):
     plot_df = df.reset_index().copy()
+    print(plot_df['rescode'])
     plot_df['res_class'] = plot_df['rescode'].apply(classify_residue)
+    print(plot_df["res_class"])
     plot_df['res_label'] = plot_df['rescode'] + plot_df['resnum'].astype(str)
-    
     # Define custom order: (+) Charge, (-) Charge, Polar, Nonpolar, Other/Nonprotein
-    class_order = ["(+) Charge", "(-) Charge", "Polar", "Nonpolar", "Other/Nonprotein"]
+    class_order = ["(+) Charge", "(-) Charge", "Polar", "Nonpolar", "Magnesium","Other/Nonprotein"]
     
     # Convert res_class to categorical with specified order
     plot_df['res_class'] = pd.Categorical(plot_df['res_class'], categories=class_order, ordered=True)
@@ -147,7 +158,9 @@ def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8, x_min=None, 
     fig, ax = plt.subplots(figsize=(12, max(6, len(plot_df) * 0.4)))
 
     # Safe color mapping - use .map() which handles missing keys by returning NaN
+
     colors = plot_df["res_class"].map(COLOR_MAP)
+    print(colors)
     # Replace any NaN colors with a default color (gray)
     colors = colors.fillna('#95a5a6')
     
@@ -168,33 +181,57 @@ def plot_bar_grouped(df, fname, title="", top_n=10, bar_height=0.8, x_min=None, 
     y_labels = [f"$\\bf{{{l}}}$" if i in top_indices else l
                 for i, l in enumerate(plot_df["res_label"])]
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(y_labels, fontsize=14)
-    ax.tick_params(axis='x', labelsize=20)
-    ax.set_xlabel(r'$\lambda_{\max,\ \mathrm{native}} - \lambda_{\max,\ q=0}\ \mathrm{(nm)}$', fontsize=30)
-    if x_min is not None:
-        ax.set_xlim(left=x_min)
-    if x_max is not None:
-        ax.set_xlim(right=x_max)
+    ax.set_yticklabels(y_labels, fontsize=20)
+
+    ax.set_xlabel(r'$\langle \lambda_{\mathrm{native}} - \lambda_{\mathrm{q=0}} \rangle$ (nm)', fontsize=50)
+
+    max_abs = 160   # fixed to match color_mae_by_mean
+    #linthresh = max_abs / 10.0  
+    #linthresh=5
+    #ax.set_xscale('symlog', linthresh=linthresh, linscale=1.0)
+    ax.set_xscale('linear')
+    #if x_min is not None:
+    ax.set_xlim(left=-160)
+    #if x_max is not None:
+    ax.set_xlim(right=60)
+
+    # Same ticks as the colour bar for .mae files
+    #ticks = [-150, -50, -10, -5, 0, 5, 10, 50]
+    #xlim = ax.get_xlim()
+    #ticks = [t for t in ticks if xlim[0] <= t <= xlim[1]]
+    #ax.set_xticks(ticks)
+    ax.tick_params(axis='x', labelsize=30)
     ax.set_title(title, fontsize=16, fontweight='bold')
+
     ax.axvline(0, color='black', linewidth=1, alpha=0.5)
     ax.invert_yaxis()
     
     # Only create legend for classes that actually appear in the data
     existing_classes = plot_df["res_class"].unique()
     handles = [plt.Line2D([0], [0], color=COLOR_MAP.get(k, '#95a5a6'), lw=8) for k in existing_classes]
-    ax.legend(handles, existing_classes, fontsize=12)
+    #ax.legend(handles, existing_classes, fontsize=12)
 
     plt.tight_layout()
     plt.savefig(f"{fname}_grouped_bar.png", dpi=300, bbox_inches='tight')
     plt.close()
+
+    fig_leg, ax_leg = plt.subplots(figsize=(4, 2))
+    ax_leg.axis('off')   # hide axes
+    legend = ax_leg.legend(handles, existing_classes, loc='center', fontsize=14, frameon=False)
+    plt.savefig(f"{fname}_legend.png", dpi=300, bbox_inches='tight')
+    plt.close(fig_leg)
+
     return plot_df
+
 
 def color_mae_by_mean(matrix, mae_path, out_prefix):
     """
-    Load MAE file and colour residues by the mean contribution (matrix['mean']).
+    Load MAE file and colour residues by the mean contribution (matrix['mean'])
+    using a symmetric logarithmic colour scale.
     Saves coloured.mae and colorbar.png.
     """
     import math
+    import numpy as np
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
@@ -210,9 +247,14 @@ def color_mae_by_mean(matrix, mae_path, out_prefix):
     # Load structure
     st = next(structure.StructureReader(mae_path))
 
-    # Colour limits
-    max_abs = math.ceil(df['value'].abs().max()) or 1.0
-    norm = mcolors.Normalize(vmin=-max_abs, vmax=max_abs, clip=True)
+    # ---- Symmetric log normalisation ----
+    #max_abs = math.ceil(df['value'].abs().max()) or 1.0
+    max_abs=160
+    # Choose a linear threshold: 1/10 of the max magnitude (adjust as needed)
+    #linthresh = max_abs / 10.0 if max_abs > 0 else 0.1
+    linthresh = 15
+    norm = mcolors.SymLogNorm(linthresh=linthresh, linscale=1.0,
+                              vmin=-max_abs, vmax=max_abs, clip=True)
     cmap = cm.get_cmap("bwr")
 
     colored_residues = 0
@@ -243,17 +285,29 @@ def color_mae_by_mean(matrix, mae_path, out_prefix):
     st.write(out_mae)
     print(f"Coloured {colored_residues} residues ({colored_atoms} atoms) → {out_mae}")
 
-    # Colour bar
-    fig, ax = plt.subplots(figsize=(6, 0.5))
-    fig.subplots_adjust(bottom=0.5)
-    cb = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap),
-                      cax=ax, orientation='horizontal')
-    cb.set_label(r'$\langle \lambda_{\mathrm{native}} - \lambda_{\mathrm{res}} \rangle$ (nm)', fontsize=15)
-    cb.ax.tick_params(labelsize=12)
+    # ---- Colour bar with log ticks ----
+    # ---- Thin vertical colour bar with fixed ticks ----
+    fig, ax = plt.subplots(figsize=(0.8, 5))          # narrow width, taller height
+    fig.subplots_adjust(left=0.3, right=0.7, top=0.9, bottom=0.1)
+
+    sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cb = plt.colorbar(sm, cax=ax, orientation='vertical')
+    cb.ax.minorticks_off()
+    # Manually set ticks (symmetric about zero)
+    ticks = [-150, -50, -15, -10, -5, 0, 5, 10, 15, 50]
+    cb.set_ticks(ticks)
+    cb.set_ticklabels([f"{t}" for t in ticks])
+
+    cb.set_label(r'$\langle \lambda_{\mathrm{native}} - \lambda_{\mathrm{q=0}} \rangle$ (nm)',
+             fontsize=12, labelpad=15)
+    cb.ax.tick_params(labelsize=10)
+    cb.ax.set_ylim(-160, 60)
     cb_path = f"{out_prefix}_colorbar_mean.png"
-    plt.savefig(cb_path, dpi=300, bbox_inches='tight')
+    plt.savefig(cb_path, dpi=1000, bbox_inches='tight')
     plt.close()
     print(f"Colour bar saved → {cb_path}")
+
 
 if __name__ == "__main__":
     import argparse
@@ -262,6 +316,7 @@ if __name__ == "__main__":
     parser.add_argument('-pp', '--param_folders', nargs='+', required=True,help='Parameter folder(s) containing .txt files (e.g., ./parameters_000001 or ./parameters_*)')
     parser.add_argument('-o', '--output', type=str, default='contributions',help='Output file prefix (default: contributions)')
     parser.add_argument('-t','--title', type=str,default=None)
+    parser.add_argument('-m','--mae',type=str,default=None,required=False)
     parser.add_argument('--asl',type=str, default=None,help='optionally filter specific residues to plot')
     parser.add_argument('--xmin', type=float, default=None, help='X-axis minimum value')
     parser.add_argument('--xmax', type=float, default=None, help='X-axis maximum value')
@@ -278,6 +333,8 @@ if __name__ == "__main__":
         else:
             param_folders.append(folder)
     print(os.path.dirname(param_folders[0]))
+
+
     mae_path = glob.glob(os.path.join(os.path.dirname(param_folders[0]), "*.mae"))[0]
 
     print(f"Found {len(param_folders)} parameter folders:")
@@ -285,6 +342,11 @@ if __name__ == "__main__":
         #print(f"  {f}")
     
     # Read MAE file
+    if not args.mae:
+        mae_path = glob.glob(os.path.join(os.path.dirname(param_folders[0]), "*.mae"))[0]
+    else:
+        mae_path=args.mae
+
     if not os.path.exists(mae_path):
         print(f"Warning: MAE file not found: {mae_path}")
         print("Residue codes will be 'UNK'")
@@ -310,10 +372,12 @@ if __name__ == "__main__":
                     top_n=0, x_min=args.xmin, x_max=args.xmax)
     
     # Plot top 25 with x limits
-    top25_indices = matrix['mean'].abs().nlargest(25).index
-    matrix_top25 = matrix.loc[top25_indices]
-    plot_bar_grouped(matrix_top25, f'{args.output}_top25_residues_{args.title}', 
-                    title=f'Top 25 Residue Contributions {args.title}', 
+    n_top=25
+    print(n_top)
+    topn_indices = matrix['mean'].abs().nlargest(n_top).index
+    matrix_topn = matrix.loc[topn_indices]
+    plot_bar_grouped(matrix_topn, f'{args.output}_top{n_top}_residues_{args.title}', 
+                    title=f'Top {n_top} Residue Contributions {args.title}', 
                     top_n=0, x_min=args.xmin, x_max=args.xmax)
     
     # Save data
@@ -331,7 +395,4 @@ if __name__ == "__main__":
         color_mae_by_mean(matrix, mae_path, args.output)
     else:
         print(f"Warning: {mae_path} not found – skipping colouring.")
-
-    # take lambda value cloest to average
-    # use geopt structure
-    # color each residue by electrostatic interaction logscale (pymol)   
+  
