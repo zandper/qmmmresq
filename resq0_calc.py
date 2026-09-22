@@ -289,7 +289,7 @@ def calc_jaguar_parallel(mae_path, r_dir, in_path, p_dir, n_cpu, native_lambda, 
                 base = out_path.rsplit('.', 1)[0]
                 print(f"Successfully processed {res_num_str}, removing {base}.*")
                 for file_path in glob.glob(f"{base}.*"):
-                    #os.remove(file_path)
+                    os.remove(file_path)
                     print(f"  Removed {file_path}")
             else:
                 print(f"Failed to process {res_num_str}, keeping files for debugging")
