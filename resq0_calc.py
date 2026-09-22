@@ -74,11 +74,18 @@ def prepare_residue_files(molnum, resnum, mae_path, in_path, target_dir):
     # Select target residue
     target_mol = next(m for m in mae_st.molecule if m.number == molnum)
     target_res = next(r for r in target_mol.residue if r.resnum == resnum)
-    
-    # Neutralize sidechain
+
+    # Neutralize sidechain only 
     sidechain_ASL = f"{target_res.getAsl()} AND NOT ( backbone )"
+    #add nearby Cl if target is MG
+    print(target_res.pdbres.strip())
+    if "MG" in target_res.pdbres.strip():
+        print('TRUE')
+        sidechain_ASL = (f"({sidechain_ASL}) OR "
+                         f"(atom.ele Cl within 5 ({target_res.getAsl()}))")
+
     atom_indices = analyze.evaluate_asl(mae_st, sidechain_ASL)
-    
+    print(sidechain_ASL)
     for i in atom_indices:
         atom = mae_st.atom[i]
         atom.partial_charge = 0 #Set sidechain charges to zero
@@ -110,12 +117,14 @@ def process_result(out_path, molnum, resnum, p_dir, native_lambda):
     
     try:
         result = output.QSiteOutput(out_path)
-        wavelength_nm = float(utils.textscrape.extract_first_wavelength(out_path))
+        wavelength_nm,osc_str = utils.textscrape.extract_first_wavelength(out_path)
+        wavelength_nm = float(wavelength_nm)
+        osc_str=float(osc_str)
         res_contrib = native_lambda - wavelength_nm
         print(f"Residue {res_num_str}: Total_E: {result.energy}, Contribution: {res_contrib}, Wavelength: {wavelength_nm}")
         
         with open(summary_path, "w") as f:
-            f.write(f"{molnum}\t{resnum}\t{result.energy}\t{res_contrib}\t{wavelength_nm}\n")
+            f.write(f"{molnum}\t{resnum}\t{result.energy}\t{res_contrib}\t{wavelength_nm}\t{osc_str}\n")
         return True
     except Exception as e:
         print(f"Failed to process {res_num_str}: {e}")
@@ -308,7 +317,10 @@ if __name__ == "__main__":
         in_text = f.read()
     
     native_out_path = in_path.replace(".in", ".out")
-    native_lambda = float(utils.textscrape.extract_first_wavelength(native_out_path))
+    print(native_out_path)
+
+    native_lambda,osc = utils.textscrape.extract_first_wavelength(native_out_path)
+    native_lambda = float(native_lambda)
     print(f"Native lambda: {native_lambda}")
     print(in_text)
     mae_path = (re.findall(r"MAEFILE:\s*(\S+)", in_text))[0]

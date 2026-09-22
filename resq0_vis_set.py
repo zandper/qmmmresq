@@ -94,7 +94,7 @@ def create_frame_contrib_matrix(param_folders, mae_st):
             with open(txt_file) as f:
                 for line in f:
                     parts_line = line.strip().split()
-                    if len(parts_line) >= 5:
+                    if len(parts_line) >= 6:
                         molnum = int(parts_line[0])
                         resnum = int(parts_line[1])
                         rows.append({
@@ -102,7 +102,8 @@ def create_frame_contrib_matrix(param_folders, mae_st):
                             'resnum': resnum,
                             'rescode': rescode_map.get((molnum, resnum), 'UNK'),
                             'frame': frame_num,
-                            'contrib': float(parts_line[-2])  # adjust sign if needed
+                            'contrib': float(parts_line[-3]),  # adjust sign if needed
+                            'oscilator_strength': float(parts_line[-1])
                         })
     
     if not rows:
